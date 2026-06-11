@@ -4,7 +4,7 @@
    ============================================================ */
 'use strict';
 
-const APP_VERSION = '1.0.001';
+const APP_VERSION = '1.0.002';
 
 // Fallback-Standort: Westbevern / Telgte
 const FALLBACK = { lat: 51.982, lon: 7.776, name: 'Westbevern' };
@@ -87,7 +87,7 @@ async function fetchWeather() {
   u.search = new URLSearchParams({
     latitude: loc.lat, longitude: loc.lon,
     current: 'temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,wind_direction_10m,weather_code,precipitation',
-    hourly: 'temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_gusts_10m,precipitation,direct_radiation',
+    hourly: 'temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation,direct_radiation',
     daily: 'sunrise,sunset,weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum',
     timezone: 'auto', forecast_days: 6, wind_speed_unit: 'kmh',
   });
@@ -196,6 +196,7 @@ function buildSlice(d) {
     prob: idx.map((i) => h.precipitation_probability[i]),
     wind: idx.map((i) => h.wind_speed_10m[i]),
     gust: idx.map((i) => h.wind_gusts_10m[i]),
+    dir: idx.map((i) => h.wind_direction_10m[i]),
     sun,
   };
 }
@@ -304,8 +305,15 @@ function drawTempGraph(s) {
 function drawSunGraph(s) {
   const { ctx, w, h } = setupCanvas($('gSun'), 56);
   drawBackdrop(ctx, w, h, s);
+  const top = 14, bottom = 4;
   const max = Math.max(400, ...s.rad);
-  drawLine(ctx, w, h, s.rad, 0, max * 1.1, 'rgba(255,165,0,0.9)', { fill: 'rgba(255,165,0,0.15)' });
+  const bw = Math.max(1.5, (w - PAD_L - PAD_R) / HOURS * 0.7);
+  ctx.fillStyle = 'rgba(255,165,0,0.75)';
+  s.rad.forEach((v, i) => {
+    if (v <= 0) return;
+    const bh = (v / max) * (h - top - bottom);
+    ctx.fillRect(xPos(i, w) - bw / 2, h - bottom - bh, bw, bh);
+  });
   graphLabel(ctx, `SONNE W/m² (max ${Math.round(Math.max(...s.rad))})`, 'rgba(255,165,0,0.9)');
 }
 
@@ -328,11 +336,26 @@ function drawRainGraph(s) {
 }
 
 function drawWindGraph(s) {
-  const { ctx, w, h } = setupCanvas($('gWind'), 56);
+  const { ctx, w, h } = setupCanvas($('gWind'), 70);
   drawBackdrop(ctx, w, h, s);
   const max = Math.max(30, ...s.gust) * 1.1;
-  drawLine(ctx, w, h, s.gust, 0, max, 'rgba(255,140,66,0.8)', { dash: [4, 3] });
-  drawLine(ctx, w, h, s.wind, 0, max, 'rgba(57,232,176,0.9)', { fill: 'rgba(57,232,176,0.08)' });
+  drawLine(ctx, w, h, s.gust, 0, max, 'rgba(255,140,66,0.8)', { dash: [4, 3], top: 28 });
+  drawLine(ctx, w, h, s.wind, 0, max, 'rgba(57,232,176,0.9)', { fill: 'rgba(57,232,176,0.08)', top: 28 });
+
+  // Windrichtungs-Pfeile (Pfeil zeigt, wohin der Wind weht)
+  ctx.strokeStyle = C.mid;
+  ctx.fillStyle = C.mid;
+  ctx.lineWidth = 1.2;
+  for (let i = 3; i < s.dir.length; i += 6) {
+    const a = (s.dir[i] + 180) * Math.PI / 180;
+    ctx.save();
+    ctx.translate(xPos(i, w), 20);
+    ctx.rotate(a);
+    ctx.beginPath(); ctx.moveTo(0, 4.5); ctx.lineTo(0, -3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -5.5); ctx.lineTo(-3, -1); ctx.lineTo(3, -1);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
   graphLabel(ctx, `WIND km/h · BÖEN (max ${Math.round(Math.max(...s.gust))})`, C.accent);
 }
 
@@ -404,11 +427,13 @@ let radarPlaying = true;
 let locMarker = null;
 
 function initMap() {
-  map = L.map('map', { zoomControl: true, attributionControl: true })
-    .setView([loc.lat, loc.lon], 9);
+  // Zoom 7 = NRW-Übersicht wie auf dem Dashboard; max. 10, da die
+  // RainViewer-Kacheln höhere Zoomstufen nicht unterstützen
+  map = L.map('map', { zoomControl: true, attributionControl: true, maxZoom: 10, minZoom: 5 })
+    .setView([loc.lat, loc.lon], 7);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; OSM &copy; CARTO &copy; RainViewer',
-    subdomains: 'abcd', maxZoom: 12, minZoom: 5,
+    subdomains: 'abcd', maxZoom: 10,
   }).addTo(map);
   locMarker = L.circleMarker([loc.lat, loc.lon], {
     radius: 6, color: C.accent, weight: 2, fillColor: C.accent, fillOpacity: 0.5,
@@ -425,7 +450,9 @@ async function loadRadar() {
     // Alte Layer entfernen, neue (unsichtbar) anlegen
     radarLayers.forEach((l) => map.removeLayer(l));
     radarLayers = frames.map((f) =>
-      L.tileLayer(`${j.host}${f.path}/512/{z}/{x}/{y}/6/1_1.png`, { opacity: 0, maxZoom: 12 }).addTo(map)
+      L.tileLayer(`${j.host}${f.path}/256/{z}/{x}/{y}/6/1_1.png`, {
+        opacity: 0, maxZoom: 10, maxNativeZoom: 9,
+      }).addTo(map)
     );
     radarFrames = frames;
     const lastPast = (j.radar?.past || []).length ? Math.min(6, (j.radar.past.length - 1)) : 0;
@@ -514,7 +541,7 @@ async function main() {
   updateWeather();
   updateAir();
   loadRadar();
-  setRadarPlaying(true);
+  setRadarPlaying(false);   // Standbild (aktuellste Aufnahme); ▶ startet die Animation
   setInterval(updateWeather, REFRESH_WEATHER);
   setInterval(updateAir, REFRESH_WEATHER);
   setInterval(loadRadar, REFRESH_RADAR);
