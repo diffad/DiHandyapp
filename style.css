@@ -176,6 +176,7 @@ main {
 .slider-wrap { position: relative; flex: 1; display: flex; align-items: center; }
 .slider-wrap input { width: 100%; }
 .now-mark {
+  display: none;   /* wird per JS eingeblendet, sobald positioniert */
   position: absolute;
   top: 0; bottom: 2px;
   width: 2px;

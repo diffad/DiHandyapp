@@ -1,5 +1,5 @@
 /* DiHandyApp Service Worker – App-Shell cachen, APIs immer live */
-const CACHE = 'dihandy-v1.0.003';
+const CACHE = 'dihandy-v1.0.004';
 const SHELL = [
   '.',
   'index.html',
@@ -43,7 +43,8 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Eigene Dateien: network-first mit Cache-Fallback (für offline)
+  // Eigene Dateien: network-first mit Cache-Fallback (für offline);
+  // ignoreSearch, damit z.B. app.js?v=… auf das gecachte app.js fällt
   e.respondWith(
     fetch(e.request)
       .then((res) => {
@@ -51,6 +52,6 @@ self.addEventListener('fetch', (e) => {
         caches.open(CACHE).then((c) => c.put(e.request, copy));
         return res;
       })
-      .catch(() => caches.match(e.request))
+      .catch(() => caches.match(e.request, { ignoreSearch: true }))
   );
 });

@@ -4,7 +4,7 @@
    ============================================================ */
 'use strict';
 
-const APP_VERSION = '1.0.003';
+const APP_VERSION = '1.0.004';
 
 // Fallback-Standort: Westbevern / Telgte
 const FALLBACK = { lat: 51.982, lon: 7.776, name: 'Westbevern' };
@@ -515,9 +515,11 @@ async function loadRadar() {
     let nowIdx = 0;
     frames.forEach((f, i) => { if (f.time * 1000 <= Date.now()) nowIdx = i; });
     $('radarSlider').max = frames.length - 1;
-    // JETZT-Markierung auf der Leiste positionieren (16px ≈ Sliderknopf)
+    // JETZT-Markierung auf der Leiste positionieren (16px ≈ Sliderknopf);
+    // bleibt unsichtbar, bis sie korrekt sitzt
     const f = frames.length > 1 ? nowIdx / (frames.length - 1) : 0;
     $('nowMark').style.left = `calc(${(f * 100).toFixed(1)}% + ${((0.5 - f) * 16).toFixed(1)}px)`;
+    $('nowMark').style.display = 'block';
     showRadarFrame(nowIdx);
     setDot('dotRadar', 'ok');
   } catch (e) {
@@ -614,5 +616,6 @@ async function main() {
 main();
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+  window.addEventListener('load', () =>
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }));
 }
