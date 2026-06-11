@@ -60,21 +60,44 @@
     <canvas id="gAxis"></canvas>
   </section>
 
-  <!-- Luftqualität -->
-  <section class="panel air" id="airPanel">
-    <div class="air-item"><span class="dot" id="aqiDot"></span><span class="k">EU&nbsp;AQI</span><span class="v" id="aqiVal">–</span></div>
-    <div class="air-item"><span class="dot" id="pm25Dot"></span><span class="k">PM2.5</span><span class="v" id="pm25Val">–</span></div>
-    <div class="air-item"><span class="dot" id="pm10Dot"></span><span class="k">PM10</span><span class="v" id="pm10Val">–</span></div>
-    <div class="air-item"><span class="dot" id="uvDot"></span><span class="k">UV</span><span class="v" id="uvVal">–</span></div>
-  </section>
-
   <!-- Regenradar -->
   <section class="panel radar">
     <div id="map"></div>
     <div class="radar-bar">
       <button id="radarPlay" aria-label="Play/Pause">⏸</button>
-      <input type="range" id="radarSlider" min="0" max="0" value="0" step="1">
+      <div class="slider-wrap">
+        <input type="range" id="radarSlider" min="0" max="0" value="0" step="1">
+        <div class="now-mark" id="nowMark"><span>JETZT</span></div>
+      </div>
       <span id="radarTime" class="mono">–:–</span>
+    </div>
+  </section>
+
+  <!-- Luftqualität -->
+  <section class="panel air" id="airPanel">
+    <div class="air-row">
+      <span class="dot" id="aqiDot"></span>
+      <div class="air-name"><span class="k">EU AQI Luftindex</span><span class="lim">bis 20 sehr gut · ab 61 schlecht</span></div>
+      <span class="v"><b id="aqiVal">–</b></span>
+      <span class="rate" id="aqiRate">–</span>
+    </div>
+    <div class="air-row">
+      <span class="dot" id="pm25Dot"></span>
+      <div class="air-name"><span class="k">PM2.5 Feinstaub</span><span class="lim">WHO-Grenzwert 15 µg/m³</span></div>
+      <span class="v"><b id="pm25Val">–</b> µg/m³</span>
+      <span class="rate" id="pm25Rate">–</span>
+    </div>
+    <div class="air-row">
+      <span class="dot" id="pm10Dot"></span>
+      <div class="air-name"><span class="k">PM10 Feinstaub</span><span class="lim">WHO-Grenzwert 45 µg/m³</span></div>
+      <span class="v"><b id="pm10Val">–</b> µg/m³</span>
+      <span class="rate" id="pm10Rate">–</span>
+    </div>
+    <div class="air-row">
+      <span class="dot" id="uvDot"></span>
+      <div class="air-name"><span class="k">UV-Index</span><span class="lim">ab 3 Schutz empfohlen · ab 8 sehr hoch</span></div>
+      <span class="v"><b id="uvVal">–</b></span>
+      <span class="rate" id="uvRate">–</span>
     </div>
   </section>
 

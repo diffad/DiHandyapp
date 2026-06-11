@@ -4,7 +4,7 @@
    ============================================================ */
 'use strict';
 
-const APP_VERSION = '1.0.002';
+const APP_VERSION = '1.0.003';
 
 // Fallback-Standort: Westbevern / Telgte
 const FALLBACK = { lat: 51.982, lon: 7.776, name: 'Westbevern' };
@@ -129,24 +129,31 @@ function renderCurrent(d) {
 
 /* ── Luftqualität ─────────────────────────────────────────── */
 
-function levelClass(value, thresholds) {
-  // thresholds: [ok-Grenze, warn-Grenze, bad-Grenze] → darüber err
-  if (value <= thresholds[0]) return 'ok';
-  if (value <= thresholds[1]) return 'warn';
-  if (value <= thresholds[2]) return 'bad';
-  return 'err';
+// Wert anhand von Schwellen einordnen → [Punktfarbe, Bewertungstext]
+function rate(value, thresholds, labels) {
+  const CLASSES = ['ok', 'warn', 'bad', 'err', 'err'];
+  let i = thresholds.findIndex((t) => value <= t);
+  if (i < 0) i = thresholds.length;
+  return [CLASSES[i], labels[i]];
+}
+
+function airRow(prefix, value, text, thresholds, labels) {
+  const [cls, label] = rate(value, thresholds, labels);
+  $(prefix + 'Val').textContent = text;
+  $(prefix + 'Rate').textContent = label;
+  setDot(prefix + 'Dot', cls);
 }
 
 function renderAir(d) {
   const c = d.current;
-  $('aqiVal').textContent = Math.round(c.european_aqi);
-  setDot('aqiDot', levelClass(c.european_aqi, [20, 40, 60]));
-  $('pm25Val').textContent = c.pm2_5.toFixed(0);
-  setDot('pm25Dot', levelClass(c.pm2_5, [15, 30, 50]));   // WHO: ≤15 µg/m³
-  $('pm10Val').textContent = c.pm10.toFixed(0);
-  setDot('pm10Dot', levelClass(c.pm10, [45, 90, 150]));   // WHO: ≤45 µg/m³
-  $('uvVal').textContent = c.uv_index.toFixed(1);
-  setDot('uvDot', levelClass(c.uv_index, [2.9, 5.9, 7.9]));
+  airRow('aqi', c.european_aqi, Math.round(c.european_aqi),
+    [20, 40, 60, 80], ['sehr gut', 'gut', 'mäßig', 'schlecht', 'sehr schlecht']);
+  airRow('pm25', c.pm2_5, c.pm2_5.toFixed(0),
+    [15, 30, 50], ['gut', 'erhöht', 'hoch', 'sehr hoch']);          // WHO: ≤15 µg/m³
+  airRow('pm10', c.pm10, c.pm10.toFixed(0),
+    [45, 90, 150], ['gut', 'erhöht', 'hoch', 'sehr hoch']);         // WHO: ≤45 µg/m³
+  airRow('uv', c.uv_index, c.uv_index.toFixed(1),
+    [2.9, 5.9, 7.9], ['niedrig', 'mittel', 'hoch', 'sehr hoch']);
 }
 
 /* ── Wettergraph: 4 Teilgraphen + Achse ───────────────────── */
@@ -425,6 +432,7 @@ function drawGraphs() {
 let map, radarFrames = [], radarLayers = [], radarIdx = 0, radarTimer = null;
 let radarPlaying = true;
 let locMarker = null;
+let windLayer = null;
 
 function initMap() {
   // Zoom 7 = NRW-Übersicht wie auf dem Dashboard; max. 10, da die
@@ -438,6 +446,54 @@ function initMap() {
   locMarker = L.circleMarker([loc.lat, loc.lon], {
     radius: 6, color: C.accent, weight: 2, fillColor: C.accent, fillOpacity: 0.5,
   }).addTo(map);
+  windLayer = L.layerGroup().addTo(map);
+
+  let moveTimer;
+  map.on('moveend zoomend', () => {
+    clearTimeout(moveTimer);
+    moveTimer = setTimeout(loadWindArrows, 600);
+  });
+}
+
+// Windpfeile: aktueller Wind an einem 4×4-Raster über dem Kartenausschnitt
+// (Pfeil zeigt, wohin der Wind weht; Größe ~ Windstärke)
+async function loadWindArrows() {
+  if (!map) return;
+  try {
+    const b = map.getBounds();
+    const lats = [], lons = [];
+    const N = 4;
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        lats.push((b.getSouth() + (r + 0.5) / N * (b.getNorth() - b.getSouth())).toFixed(3));
+        lons.push((b.getWest() + (c + 0.5) / N * (b.getEast() - b.getWest())).toFixed(3));
+      }
+    }
+    const u = new URL('https://api.open-meteo.com/v1/forecast');
+    u.search = new URLSearchParams({
+      latitude: lats.join(','), longitude: lons.join(','),
+      current: 'wind_speed_10m,wind_direction_10m', wind_speed_unit: 'kmh',
+    });
+    const r = await fetch(u);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    let j = await r.json();
+    if (!Array.isArray(j)) j = [j];
+    windLayer.clearLayers();
+    j.forEach((p) => {
+      if (!p.current) return;
+      const deg = Math.round(p.current.wind_direction_10m) + 180;
+      const size = Math.round(13 + Math.min(11, p.current.wind_speed_10m / 4));
+      L.marker([p.latitude, p.longitude], {
+        interactive: false, keyboard: false,
+        icon: L.divIcon({
+          className: 'wind-arrow', iconSize: [24, 24], iconAnchor: [12, 12],
+          html: `<div class="wa" style="transform:rotate(${deg}deg);font-size:${size}px">↑</div>`,
+        }),
+      }).addTo(windLayer);
+    });
+  } catch (e) {
+    console.error('Windpfeile:', e);
+  }
 }
 
 async function loadRadar() {
@@ -455,9 +511,14 @@ async function loadRadar() {
       }).addTo(map)
     );
     radarFrames = frames;
-    const lastPast = (j.radar?.past || []).length ? Math.min(6, (j.radar.past.length - 1)) : 0;
+    // Index des jüngsten Vergangenheits-Frames = "JETZT"
+    let nowIdx = 0;
+    frames.forEach((f, i) => { if (f.time * 1000 <= Date.now()) nowIdx = i; });
     $('radarSlider').max = frames.length - 1;
-    showRadarFrame(Math.min(lastPast, frames.length - 1));
+    // JETZT-Markierung auf der Leiste positionieren (16px ≈ Sliderknopf)
+    const f = frames.length > 1 ? nowIdx / (frames.length - 1) : 0;
+    $('nowMark').style.left = `calc(${(f * 100).toFixed(1)}% + ${((0.5 - f) * 16).toFixed(1)}px)`;
+    showRadarFrame(nowIdx);
     setDot('dotRadar', 'ok');
   } catch (e) {
     console.error('Radar:', e);
@@ -469,10 +530,11 @@ function showRadarFrame(i) {
   radarIdx = i;
   radarLayers.forEach((l, k) => l.setOpacity(k === i ? 0.75 : 0));
   const f = radarFrames[i];
-  const d = new Date(f.time * 1000);
   const future = f.time * 1000 > Date.now();
-  $('radarTime').textContent = (future ? '+' : '') +
-    d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  // Zukunfts-Frames (RainViewer-Vorhersage) als "+XX min" kennzeichnen
+  $('radarTime').textContent = future
+    ? `+${Math.round((f.time * 1000 - Date.now()) / 60000)} min`
+    : new Date(f.time * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   $('radarTime').classList.toggle('future', future);
   $('radarSlider').value = i;
 }
@@ -541,10 +603,12 @@ async function main() {
   updateWeather();
   updateAir();
   loadRadar();
+  loadWindArrows();
   setRadarPlaying(false);   // Standbild (aktuellste Aufnahme); ▶ startet die Animation
   setInterval(updateWeather, REFRESH_WEATHER);
   setInterval(updateAir, REFRESH_WEATHER);
   setInterval(loadRadar, REFRESH_RADAR);
+  setInterval(loadWindArrows, REFRESH_WEATHER);
 }
 
 main();

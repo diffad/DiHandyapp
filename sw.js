@@ -1,5 +1,5 @@
 /* DiHandyApp Service Worker – App-Shell cachen, APIs immer live */
-const CACHE = 'dihandy-v1.0.002';
+const CACHE = 'dihandy-v1.0.003';
 const SHELL = [
   '.',
   'index.html',
