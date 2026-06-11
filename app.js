@@ -1,0 +1,527 @@
+/* ============================================================
+   DiHandyApp – Mobile Companion zum DiffadDashboard 2.0
+   Wettergraph (72h) + Regenradar, Design wie das Pi-Dashboard
+   ============================================================ */
+'use strict';
+
+const APP_VERSION = '1.0.001';
+
+// Fallback-Standort: Westbevern / Telgte
+const FALLBACK = { lat: 51.982, lon: 7.776, name: 'Westbevern' };
+
+const HOURS = 72;            // Zeitraum des Graphen
+const REFRESH_WEATHER = 10 * 60 * 1000;
+const REFRESH_RADAR   =  5 * 60 * 1000;
+
+// CSS-Farbpalette
+const C = {
+  bg: '#080b10', surf: '#0e1219', border: '#2e3850',
+  accent: '#39e8b0', yellow: '#f5c842', blue: '#5a9fff',
+  red: '#ff5555', orange: '#ff8c42',
+  text: '#f0f4ff', muted: '#99aabb', mid: '#c8d8e8',
+};
+
+// WMO Wettercode → Emoji + Text
+const WMO = {
+  0: ['☀️', 'Klar'], 1: ['🌤', 'Meist klar'], 2: ['⛅', 'Bewölkt'], 3: ['☁️', 'Bedeckt'],
+  45: ['🌫', 'Nebel'], 48: ['🌫', 'Nebel'],
+  51: ['🌦', 'Niesel'], 53: ['🌦', 'Niesel'], 55: ['🌦', 'Niesel'],
+  56: ['🌧', 'Eisniesel'], 57: ['🌧', 'Eisniesel'],
+  61: ['🌧', 'Regen'], 63: ['🌧', 'Regen'], 65: ['🌧', 'Starkregen'],
+  66: ['🌧', 'Eisregen'], 67: ['🌧', 'Eisregen'],
+  71: ['❄️', 'Schnee'], 73: ['❄️', 'Schnee'], 75: ['❄️', 'Schnee'], 77: ['❄️', 'Schnee'],
+  80: ['🌦', 'Schauer'], 81: ['🌦', 'Schauer'], 82: ['🌦', 'Schauer'],
+  85: ['❄️', 'Schneeschauer'], 86: ['❄️', 'Schneeschauer'],
+  95: ['⛈', 'Gewitter'], 96: ['⛈', 'Gewitter'], 99: ['⛈', 'Gewitter'],
+};
+const wmo = (code) => WMO[code] || ['❓', '–'];
+
+const $ = (id) => document.getElementById(id);
+const setDot = (id, cls) => { $(id).className = 'dot ' + cls; };
+
+let loc = { ...FALLBACK, gps: false };
+let weatherData = null;
+
+/* ── Standort ─────────────────────────────────────────────── */
+
+function getPosition() {
+  return new Promise((resolve) => {
+    if (!('geolocation' in navigator)) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
+      () => resolve(null),
+      { timeout: 8000, maximumAge: 5 * 60 * 1000 }
+    );
+  });
+}
+
+async function reverseGeocode(lat, lon) {
+  try {
+    const r = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=12&accept-language=de`
+    );
+    const j = await r.json();
+    const a = j.address || {};
+    return a.village || a.suburb || a.town || a.city || a.municipality || a.county || j.name || null;
+  } catch { return null; }
+}
+
+async function initLocation() {
+  const pos = await getPosition();
+  if (pos) {
+    loc = { ...pos, name: null, gps: true };
+    $('locName').textContent = `${pos.lat.toFixed(3)}°N ${pos.lon.toFixed(3)}°O`;
+    reverseGeocode(pos.lat, pos.lon).then((name) => {
+      if (name) { loc.name = name; $('locName').textContent = name; }
+    });
+  } else {
+    loc = { ...FALLBACK, gps: false };
+    $('locName').textContent = `${FALLBACK.name} (Standard)`;
+  }
+}
+
+/* ── Datenabruf ───────────────────────────────────────────── */
+
+async function fetchWeather() {
+  const u = new URL('https://api.open-meteo.com/v1/forecast');
+  u.search = new URLSearchParams({
+    latitude: loc.lat, longitude: loc.lon,
+    current: 'temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,wind_direction_10m,weather_code,precipitation',
+    hourly: 'temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_gusts_10m,precipitation,direct_radiation',
+    daily: 'sunrise,sunset,weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum',
+    timezone: 'auto', forecast_days: 6, wind_speed_unit: 'kmh',
+  });
+  const r = await fetch(u);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+async function fetchAir() {
+  const u = new URL('https://air-quality-api.open-meteo.com/v1/air-quality');
+  u.search = new URLSearchParams({
+    latitude: loc.lat, longitude: loc.lon,
+    current: 'pm2_5,pm10,european_aqi,uv_index',
+    timezone: 'auto',
+  });
+  const r = await fetch(u);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+/* ── Aktuelles Wetter ─────────────────────────────────────── */
+
+const COMPASS = ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'];
+const compass = (deg) => COMPASS[Math.round(deg / 45) % 8];
+const hhmm = (iso) => iso.slice(11, 16);
+
+function renderCurrent(d) {
+  const c = d.current;
+  const [emoji, desc] = wmo(c.weather_code);
+  $('curTemp').textContent = Math.round(c.temperature_2m) + '°';
+  $('curEmoji').textContent = emoji;
+  $('curDesc').textContent = desc;
+  $('curFeels').textContent = Math.round(c.apparent_temperature) + '°';
+  $('curWind').textContent = `${Math.round(c.wind_speed_10m)} km/h ${compass(c.wind_direction_10m)}`;
+  $('curHum').textContent = Math.round(c.relative_humidity_2m) + '%';
+  $('curSunrise').textContent = hhmm(d.daily.sunrise[0]);
+  $('curSunset').textContent = hhmm(d.daily.sunset[0]);
+}
+
+/* ── Luftqualität ─────────────────────────────────────────── */
+
+function levelClass(value, thresholds) {
+  // thresholds: [ok-Grenze, warn-Grenze, bad-Grenze] → darüber err
+  if (value <= thresholds[0]) return 'ok';
+  if (value <= thresholds[1]) return 'warn';
+  if (value <= thresholds[2]) return 'bad';
+  return 'err';
+}
+
+function renderAir(d) {
+  const c = d.current;
+  $('aqiVal').textContent = Math.round(c.european_aqi);
+  setDot('aqiDot', levelClass(c.european_aqi, [20, 40, 60]));
+  $('pm25Val').textContent = c.pm2_5.toFixed(0);
+  setDot('pm25Dot', levelClass(c.pm2_5, [15, 30, 50]));   // WHO: ≤15 µg/m³
+  $('pm10Val').textContent = c.pm10.toFixed(0);
+  setDot('pm10Dot', levelClass(c.pm10, [45, 90, 150]));   // WHO: ≤45 µg/m³
+  $('uvVal').textContent = c.uv_index.toFixed(1);
+  setDot('uvDot', levelClass(c.uv_index, [2.9, 5.9, 7.9]));
+}
+
+/* ── Wettergraph: 4 Teilgraphen + Achse ───────────────────── */
+
+const PAD_L = 8, PAD_R = 8;
+const WEEKDAYS = ['SO', 'MO', 'DI', 'MI', 'DO', 'FR', 'SA'];
+
+function setupCanvas(canvas, cssHeight) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.parentElement.clientWidth;
+  canvas.style.height = cssHeight + 'px';
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(cssHeight * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w, h: cssHeight };
+}
+
+// Stundenslice ab aktueller Stunde aufbereiten
+function buildSlice(d) {
+  const h = d.hourly;
+  const nowKey = d.current.time.slice(0, 13);          // "YYYY-MM-DDTHH"
+  let start = h.time.findIndex((t) => t.slice(0, 13) === nowKey);
+  if (start < 0) start = 0;
+  const end = Math.min(start + HOURS, h.time.length);
+
+  const idx = [];
+  for (let i = start; i < end; i++) idx.push(i);
+
+  // Sonnenauf-/untergänge als fraktionale Position im Slice
+  const sun = [];
+  for (let di = 0; di < d.daily.time.length; di++) {
+    for (const key of ['sunrise', 'sunset']) {
+      const iso = d.daily[key][di];
+      const dayStart = h.time.indexOf(iso.slice(0, 10) + 'T00:00');
+      if (dayStart < 0) continue;
+      const f = dayStart + parseInt(iso.slice(11, 13), 10) + parseInt(iso.slice(14, 16), 10) / 60 - start;
+      if (f >= 0 && f <= HOURS) sun.push({ f, type: key, label: hhmm(iso) });
+    }
+  }
+
+  return {
+    time: idx.map((i) => h.time[i]),
+    temp: idx.map((i) => h.temperature_2m[i]),
+    rad: idx.map((i) => h.direct_radiation[i]),
+    precip: idx.map((i) => h.precipitation[i]),
+    prob: idx.map((i) => h.precipitation_probability[i]),
+    wind: idx.map((i) => h.wind_speed_10m[i]),
+    gust: idx.map((i) => h.wind_gusts_10m[i]),
+    sun,
+  };
+}
+
+function xPos(f, w) { return PAD_L + (f / (HOURS - 1)) * (w - PAD_L - PAD_R); }
+
+// Tag/Nacht-Hintergrund + 6h-Gitter, gemeinsam für alle Teilgraphen
+function drawBackdrop(ctx, w, h, s) {
+  // Tagphasen leicht aufhellen
+  let rise = null;
+  for (const ev of s.sun) {
+    if (ev.type === 'sunrise') rise = ev.f;
+    else {
+      const x0 = xPos(Math.max(rise ?? 0, 0), w);
+      ctx.fillStyle = 'rgba(245,200,66,0.045)';
+      ctx.fillRect(x0, 0, xPos(ev.f, w) - x0, h);
+      rise = null;
+    }
+  }
+  if (rise !== null) {
+    const x0 = xPos(rise, w);
+    ctx.fillStyle = 'rgba(245,200,66,0.045)';
+    ctx.fillRect(x0, 0, xPos(HOURS - 1, w) - x0, h);
+  }
+  // Gitterlinien alle 6 h, Mitternacht kräftiger
+  for (let i = 0; i < s.time.length; i++) {
+    const hr = +s.time[i].slice(11, 13);
+    if (hr % 6 !== 0) continue;
+    ctx.strokeStyle = hr === 0 ? 'rgba(46,56,80,0.9)' : 'rgba(46,56,80,0.4)';
+    ctx.beginPath();
+    const x = xPos(i, w) + 0.5;
+    ctx.moveTo(x, 0); ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+}
+
+function graphLabel(ctx, text, color) {
+  ctx.font = '10px "Share Tech Mono", monospace';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillStyle = color;
+  ctx.fillText(text, PAD_L + 2, 3);
+}
+
+function drawLine(ctx, w, h, data, min, max, color, { dash = null, fill = null, top = 14, bottom = 4 } = {}) {
+  const y = (v) => h - bottom - ((v - min) / (max - min || 1)) * (h - top - bottom);
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const px = xPos(i, w), py = y(v);
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  });
+  if (fill) {
+    ctx.save();
+    ctx.lineTo(xPos(data.length - 1, w), h - bottom);
+    ctx.lineTo(xPos(0, w), h - bottom);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.restore();
+    ctx.beginPath();
+    data.forEach((v, i) => {
+      const px = xPos(i, w), py = y(v);
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    });
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash(dash || []);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  return y;
+}
+
+function drawTempGraph(s) {
+  const { ctx, w, h } = setupCanvas($('gTemp'), 120);
+  drawBackdrop(ctx, w, h, s);
+  const min = Math.min(...s.temp), max = Math.max(...s.temp);
+  const pad = Math.max(1, (max - min) * 0.12);
+  const y = drawLine(ctx, w, h, s.temp, min - pad, max + pad, C.yellow,
+    { fill: 'rgba(245,200,66,0.10)', top: 18, bottom: 14 });
+
+  // Tageshöchst-/Tiefstwerte beschriften
+  ctx.font = '700 12px "Barlow Condensed", sans-serif';
+  const days = {};
+  s.time.forEach((t, i) => {
+    const day = t.slice(0, 10);
+    (days[day] = days[day] || []).push(i);
+  });
+  for (const idx of Object.values(days)) {
+    if (idx.length < 5) continue;
+    let hi = idx[0], lo = idx[0];
+    for (const i of idx) {
+      if (s.temp[i] > s.temp[hi]) hi = i;
+      if (s.temp[i] < s.temp[lo]) lo = i;
+    }
+    ctx.textAlign = 'center';
+    ctx.fillStyle = C.yellow;
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(Math.round(s.temp[hi]) + '°', Math.min(Math.max(xPos(hi, w), 12), w - 12), y(s.temp[hi]) - 2);
+    ctx.fillStyle = C.muted;
+    ctx.textBaseline = 'top';
+    ctx.fillText(Math.round(s.temp[lo]) + '°', Math.min(Math.max(xPos(lo, w), 12), w - 12), y(s.temp[lo]) + 2);
+  }
+  graphLabel(ctx, 'TEMPERATUR °C', C.yellow);
+}
+
+function drawSunGraph(s) {
+  const { ctx, w, h } = setupCanvas($('gSun'), 56);
+  drawBackdrop(ctx, w, h, s);
+  const max = Math.max(400, ...s.rad);
+  drawLine(ctx, w, h, s.rad, 0, max * 1.1, 'rgba(255,165,0,0.9)', { fill: 'rgba(255,165,0,0.15)' });
+  graphLabel(ctx, `SONNE W/m² (max ${Math.round(Math.max(...s.rad))})`, 'rgba(255,165,0,0.9)');
+}
+
+function drawRainGraph(s) {
+  const { ctx, w, h } = setupCanvas($('gRain'), 56);
+  drawBackdrop(ctx, w, h, s);
+  const top = 14, bottom = 4;
+  const maxP = Math.max(1.5, ...s.precip);
+  // Niederschlagsbalken (mm)
+  const bw = Math.max(1.5, (w - PAD_L - PAD_R) / HOURS * 0.7);
+  ctx.fillStyle = 'rgba(50,130,255,0.75)';
+  s.precip.forEach((v, i) => {
+    if (v <= 0) return;
+    const bh = (v / maxP) * (h - top - bottom);
+    ctx.fillRect(xPos(i, w) - bw / 2, h - bottom - bh, bw, bh);
+  });
+  // Wahrscheinlichkeit (%) als dünne Linie
+  drawLine(ctx, w, h, s.prob, 0, 100, 'rgba(90,159,255,0.55)', { dash: [3, 3] });
+  graphLabel(ctx, `REGEN mm·% (max ${Math.max(...s.precip).toFixed(1)})`, C.blue);
+}
+
+function drawWindGraph(s) {
+  const { ctx, w, h } = setupCanvas($('gWind'), 56);
+  drawBackdrop(ctx, w, h, s);
+  const max = Math.max(30, ...s.gust) * 1.1;
+  drawLine(ctx, w, h, s.gust, 0, max, 'rgba(255,140,66,0.8)', { dash: [4, 3] });
+  drawLine(ctx, w, h, s.wind, 0, max, 'rgba(57,232,176,0.9)', { fill: 'rgba(57,232,176,0.08)' });
+  graphLabel(ctx, `WIND km/h · BÖEN (max ${Math.round(Math.max(...s.gust))})`, C.accent);
+}
+
+function drawAxis(s) {
+  const { ctx, w, h } = setupCanvas($('gAxis'), 64);
+
+  // 1) Tag/Nacht-Streifen
+  ctx.fillStyle = 'rgba(20,26,40,1)';
+  ctx.fillRect(PAD_L, 2, w - PAD_L - PAD_R, 8);
+  let rise = null;
+  const dayStripe = (f0, f1) => {
+    ctx.fillStyle = 'rgba(245,200,66,0.55)';
+    ctx.fillRect(xPos(f0, w), 2, xPos(f1, w) - xPos(f0, w), 8);
+  };
+  for (const ev of s.sun) {
+    if (ev.type === 'sunrise') rise = ev.f;
+    else { dayStripe(Math.max(rise ?? 0, 0), ev.f); rise = null; }
+  }
+  if (rise !== null) dayStripe(rise, HOURS - 1);
+
+  // 2) Auf-/Untergangszeiten
+  ctx.font = '9px "Share Tech Mono", monospace';
+  ctx.textBaseline = 'top';
+  for (const ev of s.sun) {
+    const x = Math.min(Math.max(xPos(ev.f, w), 16), w - 16);
+    ctx.fillStyle = ev.type === 'sunrise' ? C.yellow : C.orange;
+    ctx.textAlign = 'center';
+    ctx.fillText(ev.label, x, 13);
+  }
+
+  // 3) Stundenticks 00/06/12/18 + 4) Wochentag/Datum
+  ctx.textAlign = 'center';
+  const dayCols = {};
+  s.time.forEach((t, i) => {
+    const day = t.slice(0, 10);
+    (dayCols[day] = dayCols[day] || []).push(i);
+    const hr = +t.slice(11, 13);
+    if (hr % 6 === 0) {
+      ctx.fillStyle = hr === 0 ? C.mid : C.muted;
+      ctx.font = '9px "Share Tech Mono", monospace';
+      ctx.fillText(String(hr).padStart(2, '0'), xPos(i, w), 28);
+    }
+  });
+  for (const [day, idx] of Object.entries(dayCols)) {
+    // Label nur, wenn der (ggf. angebrochene) Tag breit genug dafür ist
+    if (xPos(idx[idx.length - 1], w) - xPos(idx[0], w) < 70) continue;
+    const mid = Math.min(Math.max(xPos((idx[0] + idx[idx.length - 1]) / 2, w), 36), w - 36);
+    const dt = new Date(day + 'T12:00:00');
+    ctx.fillStyle = C.mid;
+    ctx.font = '700 13px "Barlow Condensed", sans-serif';
+    ctx.fillText(`${WEEKDAYS[dt.getDay()]} ${day.slice(8, 10)}.${day.slice(5, 7)}.`, mid, 44);
+  }
+}
+
+function drawGraphs() {
+  if (!weatherData) return;
+  const s = buildSlice(weatherData);
+  drawTempGraph(s);
+  drawSunGraph(s);
+  drawRainGraph(s);
+  drawWindGraph(s);
+  drawAxis(s);
+}
+
+/* ── Regenradar (Rainviewer + Leaflet) ────────────────────── */
+
+let map, radarFrames = [], radarLayers = [], radarIdx = 0, radarTimer = null;
+let radarPlaying = true;
+let locMarker = null;
+
+function initMap() {
+  map = L.map('map', { zoomControl: true, attributionControl: true })
+    .setView([loc.lat, loc.lon], 9);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OSM &copy; CARTO &copy; RainViewer',
+    subdomains: 'abcd', maxZoom: 12, minZoom: 5,
+  }).addTo(map);
+  locMarker = L.circleMarker([loc.lat, loc.lon], {
+    radius: 6, color: C.accent, weight: 2, fillColor: C.accent, fillOpacity: 0.5,
+  }).addTo(map);
+}
+
+async function loadRadar() {
+  try {
+    const r = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+    const j = await r.json();
+    const frames = [...(j.radar?.past || []).slice(-7), ...(j.radar?.nowcast || [])];
+    if (!frames.length) throw new Error('keine Frames');
+
+    // Alte Layer entfernen, neue (unsichtbar) anlegen
+    radarLayers.forEach((l) => map.removeLayer(l));
+    radarLayers = frames.map((f) =>
+      L.tileLayer(`${j.host}${f.path}/512/{z}/{x}/{y}/6/1_1.png`, { opacity: 0, maxZoom: 12 }).addTo(map)
+    );
+    radarFrames = frames;
+    const lastPast = (j.radar?.past || []).length ? Math.min(6, (j.radar.past.length - 1)) : 0;
+    $('radarSlider').max = frames.length - 1;
+    showRadarFrame(Math.min(lastPast, frames.length - 1));
+    setDot('dotRadar', 'ok');
+  } catch (e) {
+    console.error('Radar:', e);
+    setDot('dotRadar', 'err');
+  }
+}
+
+function showRadarFrame(i) {
+  radarIdx = i;
+  radarLayers.forEach((l, k) => l.setOpacity(k === i ? 0.75 : 0));
+  const f = radarFrames[i];
+  const d = new Date(f.time * 1000);
+  const future = f.time * 1000 > Date.now();
+  $('radarTime').textContent = (future ? '+' : '') +
+    d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  $('radarTime').classList.toggle('future', future);
+  $('radarSlider').value = i;
+}
+
+function radarTick() {
+  if (!radarFrames.length) return;
+  showRadarFrame((radarIdx + 1) % radarFrames.length);
+}
+
+function setRadarPlaying(on) {
+  radarPlaying = on;
+  $('radarPlay').textContent = on ? '⏸' : '▶';
+  clearInterval(radarTimer);
+  if (on) radarTimer = setInterval(radarTick, 600);
+}
+
+$('radarPlay').addEventListener('click', () => setRadarPlaying(!radarPlaying));
+$('radarSlider').addEventListener('input', (e) => {
+  setRadarPlaying(false);
+  showRadarFrame(+e.target.value);
+});
+
+/* ── Updates ──────────────────────────────────────────────── */
+
+async function updateWeather() {
+  try {
+    weatherData = await fetchWeather();
+    renderCurrent(weatherData);
+    drawGraphs();
+    setDot('dotWeather', 'ok');
+    $('updatedAt').textContent = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    console.error('Wetter:', e);
+    setDot('dotWeather', 'err');
+  }
+}
+
+async function updateAir() {
+  try {
+    renderAir(await fetchAir());
+    setDot('dotAir', 'ok');
+  } catch (e) {
+    console.error('Luft:', e);
+    setDot('dotAir', 'err');
+  }
+}
+
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(drawGraphs, 150);
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    updateWeather(); updateAir(); loadRadar();
+  }
+});
+
+/* ── Start ────────────────────────────────────────────────── */
+
+async function main() {
+  $('appVersion').textContent = APP_VERSION;
+  await initLocation();
+  initMap();
+  updateWeather();
+  updateAir();
+  loadRadar();
+  setRadarPlaying(true);
+  setInterval(updateWeather, REFRESH_WEATHER);
+  setInterval(updateAir, REFRESH_WEATHER);
+  setInterval(loadRadar, REFRESH_RADAR);
+}
+
+main();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+}

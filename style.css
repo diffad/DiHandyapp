@@ -1,0 +1,201 @@
+/* DiHandyApp – Design-System aus DiffadDashboard 2.0 */
+:root {
+  --bg:     #080b10;
+  --surf:   #0e1219;
+  --border: #2e3850;
+  --accent: #39e8b0;
+  --yellow: #f5c842;
+  --blue:   #5a9fff;
+  --red:    #ff5555;
+  --orange: #ff8c42;
+  --text:   #f0f4ff;
+  --muted:  #99aabb;
+  --mid:    #c8d8e8;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html { background: var(--bg); }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Barlow Condensed', sans-serif;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  overscroll-behavior-y: contain;
+}
+
+.mono { font-family: 'Share Tech Mono', monospace; }
+
+/* ── Topbar ───────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 6px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.loc {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 13px;
+  color: var(--mid);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.loc-icon { margin-right: 4px; }
+.status { display: flex; gap: 8px; flex-shrink: 0; margin-left: 10px; }
+
+.dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+  display: inline-block;
+}
+.dot.ok   { background: var(--accent); }
+.dot.warn { background: var(--yellow); }
+.dot.bad  { background: var(--orange); }
+.dot.err  { background: var(--red); }
+
+/* ── Layout ───────────────────────────────── */
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 10px 10px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.panel {
+  background: var(--surf);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+/* ── Aktuelles Wetter ─────────────────────── */
+.current { padding: 10px 14px 12px; }
+.cur-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.cur-temp {
+  font-weight: 800;
+  font-size: 58px;
+  line-height: 1;
+  color: var(--yellow);
+}
+.cur-cond { display: flex; align-items: center; gap: 10px; }
+.cur-emoji { font-size: 36px; line-height: 1; }
+.cur-desc { font-size: 22px; font-weight: 700; color: var(--mid); }
+
+.cur-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 8px;
+}
+.cur-item { display: flex; align-items: baseline; gap: 6px; }
+.cur-item .k {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+}
+.cur-item .v {
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--text);
+}
+
+/* ── Graphen ──────────────────────────────── */
+.graphs { padding: 8px 0 4px; }
+.graphs canvas { display: block; width: 100%; }
+
+/* ── Luftqualität ─────────────────────────── */
+.air {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  padding: 10px 8px;
+  gap: 4px;
+}
+.air-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+}
+.air-item .dot { align-self: center; }
+.air-item .k {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+}
+.air-item .v { font-weight: 700; font-size: 17px; }
+
+/* ── Radar ────────────────────────────────── */
+#map {
+  height: 46vh;
+  min-height: 280px;
+  background: #0a0d12;
+}
+.radar-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+#radarPlay {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--accent);
+  font-size: 14px;
+  width: 34px; height: 28px;
+  cursor: pointer;
+}
+#radarSlider {
+  flex: 1;
+  accent-color: var(--accent);
+}
+#radarTime {
+  font-size: 13px;
+  color: var(--mid);
+  min-width: 64px;
+  text-align: right;
+}
+#radarTime.future { color: var(--blue); }
+
+/* Leaflet dunkel einfärben */
+.leaflet-container { background: #0a0d12; font-family: 'Share Tech Mono', monospace; }
+.leaflet-control-attribution {
+  background: rgba(8,11,16,0.7) !important;
+  color: var(--muted) !important;
+  font-size: 9px !important;
+}
+.leaflet-control-attribution a { color: var(--muted) !important; }
+.leaflet-control-zoom a {
+  background: var(--surf) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+/* ── Footer ───────────────────────────────── */
+footer {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  padding-top: 4px;
+}
+footer .sep { color: var(--border); }

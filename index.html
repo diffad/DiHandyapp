@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DiHandyApp – Wetter Westbevern</title>
+<meta name="description" content="Mobile Wetter-App: 72h-Wettergraph und Regenradar im DiffadDashboard-Design">
+<meta name="theme-color" content="#080b10">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DiHandy">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="loc" id="locLabel"><span class="loc-icon">📍</span><span id="locName">Standort wird ermittelt…</span></div>
+  <div class="status">
+    <span class="dot" id="dotWeather" title="Wetter"></span>
+    <span class="dot" id="dotAir" title="Luft"></span>
+    <span class="dot" id="dotRadar" title="Radar"></span>
+  </div>
+</header>
+
+<main>
+
+  <!-- Aktuelles Wetter kompakt -->
+  <section class="panel current" id="currentPanel">
+    <div class="cur-main">
+      <div class="cur-temp" id="curTemp">–°</div>
+      <div class="cur-cond">
+        <div class="cur-emoji" id="curEmoji">⏳</div>
+        <div class="cur-desc" id="curDesc">lädt…</div>
+      </div>
+    </div>
+    <div class="cur-details">
+      <div class="cur-item"><span class="k">GEFÜHLT</span><span class="v" id="curFeels">–°</span></div>
+      <div class="cur-item"><span class="k">WIND</span><span class="v" id="curWind">–</span></div>
+      <div class="cur-item"><span class="k">FEUCHTE</span><span class="v" id="curHum">–%</span></div>
+      <div class="cur-item"><span class="k">🌅</span><span class="v" id="curSunrise">–:–</span></div>
+      <div class="cur-item"><span class="k">🌇</span><span class="v" id="curSunset">–:–</span></div>
+    </div>
+  </section>
+
+  <!-- Wettergraph: 4 Teilgraphen + Achse -->
+  <section class="panel graphs" id="graphPanel">
+    <canvas id="gTemp"></canvas>
+    <canvas id="gSun"></canvas>
+    <canvas id="gRain"></canvas>
+    <canvas id="gWind"></canvas>
+    <canvas id="gAxis"></canvas>
+  </section>
+
+  <!-- Luftqualität -->
+  <section class="panel air" id="airPanel">
+    <div class="air-item"><span class="dot" id="aqiDot"></span><span class="k">EU&nbsp;AQI</span><span class="v" id="aqiVal">–</span></div>
+    <div class="air-item"><span class="dot" id="pm25Dot"></span><span class="k">PM2.5</span><span class="v" id="pm25Val">–</span></div>
+    <div class="air-item"><span class="dot" id="pm10Dot"></span><span class="k">PM10</span><span class="v" id="pm10Val">–</span></div>
+    <div class="air-item"><span class="dot" id="uvDot"></span><span class="k">UV</span><span class="v" id="uvVal">–</span></div>
+  </section>
+
+  <!-- Regenradar -->
+  <section class="panel radar">
+    <div id="map"></div>
+    <div class="radar-bar">
+      <button id="radarPlay" aria-label="Play/Pause">⏸</button>
+      <input type="range" id="radarSlider" min="0" max="0" value="0" step="1">
+      <span id="radarTime" class="mono">–:–</span>
+    </div>
+  </section>
+
+  <footer>
+    <span>DiHandyApp <span id="appVersion"></span></span>
+    <span class="sep">·</span>
+    <span>Open-Meteo · RainViewer</span>
+    <span class="sep">·</span>
+    <span id="updatedAt">–</span>
+  </footer>
+
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="app.js"></script>
+</body>
+</html>
