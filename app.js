@@ -4,7 +4,7 @@
    ============================================================ */
 'use strict';
 
-const APP_VERSION = '1.0.004';
+const APP_VERSION = '1.0.005';
 
 // Fallback-Standort: Westbevern / Telgte
 const FALLBACK = { lat: 51.982, lon: 7.776, name: 'Westbevern' };
@@ -440,7 +440,7 @@ function initMap() {
   map = L.map('map', { zoomControl: true, attributionControl: true, maxZoom: 10, minZoom: 5 })
     .setView([loc.lat, loc.lon], 7);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OSM &copy; CARTO &copy; RainViewer',
+    attribution: '&copy; OSM &copy; CARTO &copy; RainViewer &copy; DWD',
     subdomains: 'abcd', maxZoom: 10,
   }).addTo(map);
   locMarker = L.circleMarker([loc.lat, loc.lon], {
@@ -496,20 +496,44 @@ async function loadWindArrows() {
   }
 }
 
+// DWD-Radarvorhersage (FX-Produkt, +2 h in 5-min-Schritten) via WMS
+const DWD_WMS = 'https://maps.dwd.de/geoserver/dwd/wms';
+
 async function loadRadar() {
   try {
+    // Vergangenheit: RainViewer (liefert seit 01/2026 nur noch Vergangenheit,
+    // ~2 h in 10-min-Schritten, max. Zoom 7)
     const r = await fetch('https://api.rainviewer.com/public/weather-maps.json');
     const j = await r.json();
-    const frames = [...(j.radar?.past || []).slice(-7), ...(j.radar?.nowcast || [])];
+    const past = (j.radar?.past || []).slice(-7).map((f) => ({
+      time: f.time,
+      layer: L.tileLayer(`${j.host}${f.path}/256/{z}/{x}/{y}/6/1_1.png`, {
+        opacity: 0, maxZoom: 10, maxNativeZoom: 7,
+      }),
+    }));
+
+    // Zukunft: DWD-Radarvorhersage, +15 bis +120 min in 15-min-Schritten
+    // (auf 5-min-Raster gerundet, da das FX-Produkt 5-min-Zeitschritte hat)
+    const base = Math.ceil(Date.now() / 300000) * 300000;
+    const future = [];
+    for (let m = 15; m <= 120; m += 15) {
+      const t = base + m * 60000;
+      future.push({
+        time: Math.round(t / 1000),
+        layer: L.tileLayer.wms(DWD_WMS, {
+          layers: 'dwd:FX-Produkt', format: 'image/png', transparent: true,
+          version: '1.3.0', opacity: 0, maxZoom: 10,
+          time: new Date(t).toISOString().replace(/\.\d{3}Z$/, '.000Z'),
+        }),
+      });
+    }
+
+    const frames = [...past, ...future];
     if (!frames.length) throw new Error('keine Frames');
 
     // Alte Layer entfernen, neue (unsichtbar) anlegen
     radarLayers.forEach((l) => map.removeLayer(l));
-    radarLayers = frames.map((f) =>
-      L.tileLayer(`${j.host}${f.path}/256/{z}/{x}/{y}/6/1_1.png`, {
-        opacity: 0, maxZoom: 10, maxNativeZoom: 9,
-      }).addTo(map)
-    );
+    radarLayers = frames.map((f) => f.layer.addTo(map));
     radarFrames = frames;
     // Index des jüngsten Vergangenheits-Frames = "JETZT"
     let nowIdx = 0;
@@ -535,7 +559,7 @@ function showRadarFrame(i) {
   const future = f.time * 1000 > Date.now();
   // Zukunfts-Frames (RainViewer-Vorhersage) als "+XX min" kennzeichnen
   $('radarTime').textContent = future
-    ? `+${Math.round((f.time * 1000 - Date.now()) / 60000)} min`
+    ? `+${Math.round((f.time * 1000 - Date.now()) / 60000 / 5) * 5} min`
     : new Date(f.time * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   $('radarTime').classList.toggle('future', future);
   $('radarSlider').value = i;
