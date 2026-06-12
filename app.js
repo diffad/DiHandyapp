@@ -4,7 +4,7 @@
    ============================================================ */
 'use strict';
 
-const APP_VERSION = '1.0.007';
+const APP_VERSION = '1.0.008';
 
 // Fallback-Standort: Westbevern / Telgte
 const FALLBACK = { lat: 51.982, lon: 7.776, name: 'Westbevern' };
@@ -455,7 +455,8 @@ function initMap() {
   });
 }
 
-// Windpfeile: aktueller Wind an einem 4×4-Raster über dem Kartenausschnitt
+// Windpfeile: Höhenwind (850 hPa ≈ 1,5 km) an einem 4×4-Raster über dem
+// Kartenausschnitt – passt zur Zugrichtung der Regenwolken im Radar.
 // (Pfeil zeigt, wohin der Wind weht; Größe ~ Windstärke)
 async function loadWindArrows() {
   if (!map) return;
@@ -472,7 +473,8 @@ async function loadWindArrows() {
     const u = new URL('https://api.open-meteo.com/v1/forecast');
     u.search = new URLSearchParams({
       latitude: lats.join(','), longitude: lons.join(','),
-      current: 'wind_speed_10m,wind_direction_10m', wind_speed_unit: 'kmh',
+      hourly: 'wind_speed_850hPa,wind_direction_850hPa',
+      forecast_hours: 1, wind_speed_unit: 'kmh',
     });
     const r = await fetch(u);
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -480,9 +482,11 @@ async function loadWindArrows() {
     if (!Array.isArray(j)) j = [j];
     windLayer.clearLayers();
     j.forEach((p) => {
-      if (!p.current) return;
-      const deg = Math.round(p.current.wind_direction_10m) + 180;
-      const size = Math.round(13 + Math.min(11, p.current.wind_speed_10m / 4));
+      const dir = p.hourly?.wind_direction_850hPa?.[0];
+      const spd = p.hourly?.wind_speed_850hPa?.[0];
+      if (dir == null || spd == null) return;
+      const deg = Math.round(dir) + 180;
+      const size = Math.round(13 + Math.min(11, spd / 8));
       L.marker([p.latitude, p.longitude], {
         interactive: false, keyboard: false,
         icon: L.divIcon({
