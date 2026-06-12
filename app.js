@@ -4,7 +4,7 @@
    ============================================================ */
 'use strict';
 
-const APP_VERSION = '1.0.006';
+const APP_VERSION = '1.0.007';
 
 // Fallback-Standort: Westbevern / Telgte
 const FALLBACK = { lat: 51.982, lon: 7.776, name: 'Westbevern' };
@@ -496,9 +496,10 @@ async function loadWindArrows() {
   }
 }
 
-// DWD-Radarvorhersage via WMS: WN-Produkt = Radarkomposit + 2 h Vorhersage
-// in 5-min-Schritten (Nachfolger des 2020 eingestellten FX-Produkts)
+// DWD-Radarvorhersage via WMS. Aktueller Layername auf dem DWD-GeoServer:
+// Radar_wn-product_1x1km_ger = Radarkomposit (dBZ) + 2 h Nowcast, 5-min-Schritte
 const DWD_WMS = 'https://maps.dwd.de/geoserver/dwd/wms';
+const DWD_LAYER = 'Radar_wn-product_1x1km_ger';
 
 async function loadRadar() {
   try {
@@ -523,7 +524,7 @@ async function loadRadar() {
       future.push({
         time: Math.round(t / 1000),
         layer: L.tileLayer.wms(DWD_WMS, {
-          layers: 'dwd:WN-Produkt', format: 'image/png', transparent: true,
+          layers: DWD_LAYER, format: 'image/png', transparent: true,
           version: '1.3.0', opacity: 0, maxZoom: 10,
           time: new Date(t).toISOString().replace(/\.\d{3}Z$/, '.000Z'),
         }),
