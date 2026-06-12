@@ -4,7 +4,7 @@
    ============================================================ */
 'use strict';
 
-const APP_VERSION = '1.0.008';
+const APP_VERSION = '1.0.009';
 
 // Fallback-Standort: Westbevern / Telgte
 const FALLBACK = { lat: 51.982, lon: 7.776, name: 'Westbevern' };
@@ -417,9 +417,117 @@ function drawAxis(s) {
   }
 }
 
+// Detailgraph: nächste 24 h kombiniert – Temperaturlinie, Sonnen- und
+// Regenbalken in einem Bild, X-Achse mit Stundenbeschriftung
+function drawDayGraph(s) {
+  const N = 24;
+  const { ctx, w, h } = setupCanvas($('gDay'), 170);
+  const x = (f) => PAD_L + (f / (N - 1)) * (w - PAD_L - PAD_R);
+  const axisH = 16, top = 16;
+  const pb = h - axisH;                    // Unterkante Plotbereich
+
+  // Tagphasen aufhellen (auf 0..N begrenzt)
+  ctx.fillStyle = 'rgba(245,200,66,0.05)';
+  let rise = null;
+  const stripe = (a, b) => {
+    a = Math.max(a, 0); b = Math.min(b, N - 1);
+    if (b > a) ctx.fillRect(x(a), 0, x(b) - x(a), pb);
+  };
+  for (const ev of s.sun) {
+    if (ev.type === 'sunrise') rise = ev.f;
+    else { stripe(rise ?? 0, ev.f); rise = null; }
+  }
+  if (rise !== null) stripe(rise, N - 1);
+
+  // Stundengitter + Beschriftung alle 2 h
+  ctx.font = '9px "Share Tech Mono", monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let i = 0; i < N; i++) {
+    const hr = +s.time[i].slice(11, 13);
+    ctx.strokeStyle = hr % 6 === 0 ? 'rgba(46,56,80,0.9)' : 'rgba(46,56,80,0.3)';
+    ctx.beginPath();
+    const px = x(i) + 0.5;
+    ctx.moveTo(px, 0); ctx.lineTo(px, pb);
+    ctx.stroke();
+    if (hr % 2 === 0) {
+      ctx.fillStyle = hr % 6 === 0 ? C.mid : C.muted;
+      ctx.fillText(String(hr).padStart(2, '0'), Math.min(Math.max(x(i), 10), w - 10), pb + 4);
+    }
+  }
+
+  const step = (w - PAD_L - PAD_R) / N;
+  const barArea = (pb - top) * 0.45;       // Balken nutzen das untere Drittel
+
+  // Sonnenstrahlung: breite, halbtransparente orange Balken
+  const maxRad = Math.max(300, ...s.rad.slice(0, N));
+  ctx.fillStyle = 'rgba(255,165,0,0.4)';
+  for (let i = 0; i < N; i++) {
+    if (s.rad[i] <= 0) continue;
+    const bh = (s.rad[i] / maxRad) * barArea;
+    ctx.fillRect(x(i) - step * 0.32, pb - bh, step * 0.64, bh);
+  }
+
+  // Regen: schmale blaue Balken davor, Maximalwert beschriften
+  const maxP = Math.max(1.5, ...s.precip.slice(0, N));
+  let rainMaxIdx = -1;
+  ctx.fillStyle = 'rgba(50,130,255,0.85)';
+  for (let i = 0; i < N; i++) {
+    if (s.precip[i] <= 0) continue;
+    if (rainMaxIdx < 0 || s.precip[i] > s.precip[rainMaxIdx]) rainMaxIdx = i;
+    const bh = Math.max(2, (s.precip[i] / maxP) * barArea);
+    ctx.fillRect(x(i) - step * 0.18, pb - bh, step * 0.36, bh);
+  }
+  if (rainMaxIdx >= 0 && s.precip[rainMaxIdx] >= 0.1) {
+    ctx.fillStyle = C.blue;
+    ctx.font = '700 11px "Barlow Condensed", sans-serif';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(s.precip[rainMaxIdx].toFixed(1),
+      Math.min(Math.max(x(rainMaxIdx), 12), w - 12),
+      pb - (s.precip[rainMaxIdx] / maxP) * barArea - 2);
+  }
+
+  // Temperaturlinie über den Balken
+  const t24 = s.temp.slice(0, N);
+  const tMin = Math.min(...t24), tMax = Math.max(...t24);
+  const pad = Math.max(1, (tMax - tMin) * 0.15);
+  const ty = (v) => {
+    const y0 = top + 12, y1 = pb - barArea * 0.5;
+    return y1 - ((v - (tMin - pad)) / ((tMax + pad) - (tMin - pad))) * (y1 - y0);
+  };
+  ctx.beginPath();
+  t24.forEach((v, i) => { i === 0 ? ctx.moveTo(x(i), ty(v)) : ctx.lineTo(x(i), ty(v)); });
+  ctx.strokeStyle = C.yellow;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.lineWidth = 1;
+
+  // Höchst-/Tiefstwert beschriften
+  const hi = t24.indexOf(tMax), lo = t24.indexOf(tMin);
+  ctx.font = '700 13px "Barlow Condensed", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = C.yellow;
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(Math.round(tMax) + '°', Math.min(Math.max(x(hi), 14), w - 14), ty(tMax) - 3);
+  ctx.fillStyle = C.mid;
+  ctx.textBaseline = 'top';
+  ctx.fillText(Math.round(tMin) + '°', Math.min(Math.max(x(lo), 14), w - 14), ty(tMin) + 3);
+
+  // Legende
+  ctx.font = '10px "Share Tech Mono", monospace';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  let lx = PAD_L + 2;
+  for (const [t, c] of [['NÄCHSTE 24H', C.mid], ['TEMP', C.yellow],
+                        ['SONNE', 'rgba(255,165,0,0.9)'], ['REGEN mm', C.blue]]) {
+    ctx.fillStyle = c;
+    ctx.fillText(t, lx, 3);
+    lx += ctx.measureText(t).width + 9;
+  }
+}
+
 function drawGraphs() {
   if (!weatherData) return;
   const s = buildSlice(weatherData);
+  drawDayGraph(s);
   drawTempGraph(s);
   drawSunGraph(s);
   drawRainGraph(s);
