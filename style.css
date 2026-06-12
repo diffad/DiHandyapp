@@ -230,11 +230,12 @@ main {
   font-size: 9px !important;
 }
 .leaflet-control-attribution a { color: var(--muted) !important; }
-.leaflet-control-zoom a {
+.leaflet-bar a {
   background: var(--surf) !important;
   color: var(--text) !important;
   border-color: var(--border) !important;
 }
+.leaflet-bar a.reset-view { font-size: 18px; line-height: 26px; }
 
 /* ── Footer ───────────────────────────────── */
 footer {

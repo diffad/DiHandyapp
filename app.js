@@ -4,7 +4,7 @@
    ============================================================ */
 'use strict';
 
-const APP_VERSION = '1.0.009';
+const APP_VERSION = '1.0.010';
 
 // Fallback-Standort: Westbevern / Telgte
 const FALLBACK = { lat: 51.982, lon: 7.776, name: 'Westbevern' };
@@ -544,9 +544,13 @@ let windLayer = null;
 
 function initMap() {
   // Zoom 7 = NRW-Übersicht wie auf dem Dashboard; max. 10, da die
-  // RainViewer-Kacheln höhere Zoomstufen nicht unterstützen
-  map = L.map('map', { zoomControl: true, attributionControl: true, maxZoom: 10, minZoom: 5 })
-    .setView([loc.lat, loc.lon], 7);
+  // RainViewer-Kacheln höhere Zoomstufen nicht unterstützen.
+  // Auf Touch-Geräten ist Ein-Finger-Verschieben deaktiviert, damit die
+  // Karte beim Scrollen durch die App nicht verrutscht (Pinch-Zoom bleibt).
+  map = L.map('map', {
+    zoomControl: true, attributionControl: true, maxZoom: 10, minZoom: 5,
+    dragging: !L.Browser.touch, touchZoom: true, tap: false,
+  }).setView([loc.lat, loc.lon], 7);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; OSM &copy; CARTO &copy; RainViewer &copy; DWD',
     subdomains: 'abcd', maxZoom: 10,
@@ -555,6 +559,25 @@ function initMap() {
     radius: 6, color: C.accent, weight: 2, fillColor: C.accent, fillOpacity: 0.5,
   }).addTo(map);
   windLayer = L.layerGroup().addTo(map);
+
+  // Reset-Knopf unter den Zoom-Tasten: Ansicht zurück auf Start (Standort, Zoom 7)
+  const ResetControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd() {
+      const div = L.DomUtil.create('div', 'leaflet-bar');
+      const a = L.DomUtil.create('a', 'reset-view', div);
+      a.href = '#';
+      a.innerHTML = '⌖';
+      a.title = 'Ansicht zurücksetzen';
+      a.setAttribute('aria-label', 'Ansicht zurücksetzen');
+      L.DomEvent.on(a, 'click', (e) => {
+        L.DomEvent.stop(e);
+        map.setView([loc.lat, loc.lon], 7);
+      });
+      return div;
+    },
+  });
+  map.addControl(new ResetControl());
 
   let moveTimer;
   map.on('moveend zoomend', () => {
