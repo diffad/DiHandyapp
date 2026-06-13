@@ -8,6 +8,7 @@
   --blue:   #5a9fff;
   --red:    #ff5555;
   --orange: #ff8c42;
+  --temp:   #ff5d8a;
   --text:   #f0f4ff;
   --muted:  #99aabb;
   --mid:    #c8d8e8;
@@ -90,7 +91,7 @@ main {
   font-weight: 800;
   font-size: 58px;
   line-height: 1;
-  color: var(--yellow);
+  color: var(--temp);
 }
 .cur-cond { display: flex; align-items: center; gap: 10px; }
 .cur-emoji { font-size: 36px; line-height: 1; }
@@ -117,6 +118,16 @@ main {
 /* ── Graphen ──────────────────────────────── */
 .graphs { padding: 8px 0 4px; }
 .graphs canvas { display: block; width: 100%; }
+
+/* Wochenübersicht: horizontal scrollbar (Canvas ist breiter als das Panel) */
+#graphPanel {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+#graphPanel canvas { width: auto; }
+#graphPanel::-webkit-scrollbar { height: 5px; }
+#graphPanel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
 /* ── Luftqualität ─────────────────────────── */
 .air { padding: 6px 12px; }

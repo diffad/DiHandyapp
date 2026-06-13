@@ -4,12 +4,13 @@
    ============================================================ */
 'use strict';
 
-const APP_VERSION = '1.0.010';
+const APP_VERSION = '1.0.011';
 
 // Fallback-Standort: Westbevern / Telgte
 const FALLBACK = { lat: 51.982, lon: 7.776, name: 'Westbevern' };
 
-const HOURS = 72;            // Zeitraum des Graphen
+const HOURS = 168;           // Zeitraum der Wochenübersicht (7 Tage)
+const WEEK_PX_PER_H = 5.2;   // Breite je Stunde → Graph wird horizontal scrollbar
 const REFRESH_WEATHER = 10 * 60 * 1000;
 const REFRESH_RADAR   =  5 * 60 * 1000;
 
@@ -17,7 +18,7 @@ const REFRESH_RADAR   =  5 * 60 * 1000;
 const C = {
   bg: '#080b10', surf: '#0e1219', border: '#2e3850',
   accent: '#39e8b0', yellow: '#f5c842', blue: '#5a9fff',
-  red: '#ff5555', orange: '#ff8c42',
+  red: '#ff5555', orange: '#ff8c42', temp: '#ff5d8a',
   text: '#f0f4ff', muted: '#99aabb', mid: '#c8d8e8',
 };
 
@@ -89,7 +90,7 @@ async function fetchWeather() {
     current: 'temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,wind_direction_10m,weather_code,precipitation',
     hourly: 'temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation,direct_radiation',
     daily: 'sunrise,sunset,weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum',
-    timezone: 'auto', forecast_days: 6, wind_speed_unit: 'kmh',
+    timezone: 'auto', forecast_days: 8, wind_speed_unit: 'kmh',
   });
   const r = await fetch(u);
   if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -161,15 +162,23 @@ function renderAir(d) {
 const PAD_L = 8, PAD_R = 8;
 const WEEKDAYS = ['SO', 'MO', 'DI', 'MI', 'DO', 'FR', 'SA'];
 
-function setupCanvas(canvas, cssHeight) {
+function setupCanvas(canvas, cssHeight, cssWidth) {
   const dpr = window.devicePixelRatio || 1;
-  const w = canvas.parentElement.clientWidth;
+  const w = cssWidth || canvas.parentElement.clientWidth;
   canvas.style.height = cssHeight + 'px';
+  if (cssWidth) canvas.style.width = cssWidth + 'px';
   canvas.width = Math.round(w * dpr);
   canvas.height = Math.round(cssHeight * dpr);
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   return { ctx, w, h: cssHeight };
+}
+
+// Breite der scrollbaren Wochenübersicht: mindestens die sichtbare Panelbreite,
+// sonst HOURS × Pixel/Stunde, damit man nach rechts zu späteren Tagen scrollen kann
+function weekWidth() {
+  const visible = $('graphPanel').clientWidth;
+  return Math.max(visible, Math.round(HOURS * WEEK_PX_PER_H) + PAD_L + PAD_R);
 }
 
 // Stundenslice ab aktueller Stunde aufbereiten
@@ -277,12 +286,12 @@ function drawLine(ctx, w, h, data, min, max, color, { dash = null, fill = null, 
 }
 
 function drawTempGraph(s) {
-  const { ctx, w, h } = setupCanvas($('gTemp'), 120);
+  const { ctx, w, h } = setupCanvas($('gTemp'), 120, weekWidth());
   drawBackdrop(ctx, w, h, s);
   const min = Math.min(...s.temp), max = Math.max(...s.temp);
   const pad = Math.max(1, (max - min) * 0.12);
-  const y = drawLine(ctx, w, h, s.temp, min - pad, max + pad, C.yellow,
-    { fill: 'rgba(245,200,66,0.10)', top: 18, bottom: 14 });
+  const y = drawLine(ctx, w, h, s.temp, min - pad, max + pad, C.temp,
+    { fill: 'rgba(255,93,138,0.10)', top: 18, bottom: 14 });
 
   // Tageshöchst-/Tiefstwerte beschriften
   ctx.font = '700 12px "Barlow Condensed", sans-serif';
@@ -299,18 +308,18 @@ function drawTempGraph(s) {
       if (s.temp[i] < s.temp[lo]) lo = i;
     }
     ctx.textAlign = 'center';
-    ctx.fillStyle = C.yellow;
+    ctx.fillStyle = C.temp;
     ctx.textBaseline = 'bottom';
     ctx.fillText(Math.round(s.temp[hi]) + '°', Math.min(Math.max(xPos(hi, w), 12), w - 12), y(s.temp[hi]) - 2);
     ctx.fillStyle = C.muted;
     ctx.textBaseline = 'top';
     ctx.fillText(Math.round(s.temp[lo]) + '°', Math.min(Math.max(xPos(lo, w), 12), w - 12), y(s.temp[lo]) + 2);
   }
-  graphLabel(ctx, 'TEMPERATUR °C', C.yellow);
+  graphLabel(ctx, 'TEMPERATUR °C', C.temp);
 }
 
 function drawSunGraph(s) {
-  const { ctx, w, h } = setupCanvas($('gSun'), 56);
+  const { ctx, w, h } = setupCanvas($('gSun'), 56, weekWidth());
   drawBackdrop(ctx, w, h, s);
   const top = 14, bottom = 4;
   const max = Math.max(400, ...s.rad);
@@ -325,7 +334,7 @@ function drawSunGraph(s) {
 }
 
 function drawRainGraph(s) {
-  const { ctx, w, h } = setupCanvas($('gRain'), 56);
+  const { ctx, w, h } = setupCanvas($('gRain'), 56, weekWidth());
   drawBackdrop(ctx, w, h, s);
   const top = 14, bottom = 4;
   const maxP = Math.max(1.5, ...s.precip);
@@ -343,7 +352,7 @@ function drawRainGraph(s) {
 }
 
 function drawWindGraph(s) {
-  const { ctx, w, h } = setupCanvas($('gWind'), 70);
+  const { ctx, w, h } = setupCanvas($('gWind'), 70, weekWidth());
   drawBackdrop(ctx, w, h, s);
   const max = Math.max(30, ...s.gust) * 1.1;
   drawLine(ctx, w, h, s.gust, 0, max, 'rgba(255,140,66,0.8)', { dash: [4, 3], top: 28 });
@@ -367,7 +376,7 @@ function drawWindGraph(s) {
 }
 
 function drawAxis(s) {
-  const { ctx, w, h } = setupCanvas($('gAxis'), 64);
+  const { ctx, w, h } = setupCanvas($('gAxis'), 64, weekWidth());
 
   // 1) Tag/Nacht-Streifen
   ctx.fillStyle = 'rgba(20,26,40,1)';
@@ -418,20 +427,24 @@ function drawAxis(s) {
 }
 
 // Detailgraph: nächste 24 h kombiniert – Temperaturlinie, Sonnen- und
-// Regenbalken in einem Bild, X-Achse mit Stundenbeschriftung
+// Regenbalken, darunter ein Wind-Streifen (Mittel + Böen) wie in der
+// Wochenübersicht. X-Achse mit Stundenbeschriftung, Werte beschriftet.
 function drawDayGraph(s) {
   const N = 24;
-  const { ctx, w, h } = setupCanvas($('gDay'), 170);
+  const { ctx, w, h } = setupCanvas($('gDay'), 240);
   const x = (f) => PAD_L + (f / (N - 1)) * (w - PAD_L - PAD_R);
-  const axisH = 16, top = 16;
-  const pb = h - axisH;                    // Unterkante Plotbereich
+  const step = (w - PAD_L - PAD_R) / N;
+  const axisH = 15, top = 18;
+  const windH = 48;                        // Höhe des Wind-Streifens
+  const windTop = h - axisH - windH;       // Oberkante Wind-Streifen
+  const pb = windTop - 6;                   // Basislinie für Sonne-/Regenbalken
 
   // Tagphasen aufhellen (auf 0..N begrenzt)
   ctx.fillStyle = 'rgba(245,200,66,0.05)';
   let rise = null;
   const stripe = (a, b) => {
     a = Math.max(a, 0); b = Math.min(b, N - 1);
-    if (b > a) ctx.fillRect(x(a), 0, x(b) - x(a), pb);
+    if (b > a) ctx.fillRect(x(a), 0, x(b) - x(a), h - axisH);
   };
   for (const ev of s.sun) {
     if (ev.type === 'sunrise') rise = ev.f;
@@ -439,7 +452,11 @@ function drawDayGraph(s) {
   }
   if (rise !== null) stripe(rise, N - 1);
 
-  // Stundengitter + Beschriftung alle 2 h
+  // Trennlinie zwischen Hauptbereich und Wind-Streifen
+  ctx.strokeStyle = 'rgba(46,56,80,0.6)';
+  ctx.beginPath(); ctx.moveTo(PAD_L, windTop - 1); ctx.lineTo(w - PAD_R, windTop - 1); ctx.stroke();
+
+  // Stundengitter über die volle Höhe + Beschriftung alle 2 h
   ctx.font = '9px "Share Tech Mono", monospace';
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   for (let i = 0; i < N; i++) {
@@ -447,16 +464,15 @@ function drawDayGraph(s) {
     ctx.strokeStyle = hr % 6 === 0 ? 'rgba(46,56,80,0.9)' : 'rgba(46,56,80,0.3)';
     ctx.beginPath();
     const px = x(i) + 0.5;
-    ctx.moveTo(px, 0); ctx.lineTo(px, pb);
+    ctx.moveTo(px, 0); ctx.lineTo(px, h - axisH);
     ctx.stroke();
     if (hr % 2 === 0) {
       ctx.fillStyle = hr % 6 === 0 ? C.mid : C.muted;
-      ctx.fillText(String(hr).padStart(2, '0'), Math.min(Math.max(x(i), 10), w - 10), pb + 4);
+      ctx.fillText(String(hr).padStart(2, '0'), Math.min(Math.max(x(i), 10), w - 10), h - axisH + 3);
     }
   }
 
-  const step = (w - PAD_L - PAD_R) / N;
-  const barArea = (pb - top) * 0.45;       // Balken nutzen das untere Drittel
+  const barArea = (pb - top) * 0.42;       // Balken nutzen das untere Drittel
 
   // Sonnenstrahlung: breite, halbtransparente orange Balken
   const maxRad = Math.max(300, ...s.rad.slice(0, N));
@@ -467,60 +483,100 @@ function drawDayGraph(s) {
     ctx.fillRect(x(i) - step * 0.32, pb - bh, step * 0.64, bh);
   }
 
-  // Regen: schmale blaue Balken davor, Maximalwert beschriften
+  // Regen: schmale blaue Balken davor; auffällige Spitzen beschriften
   const maxP = Math.max(1.5, ...s.precip.slice(0, N));
-  let rainMaxIdx = -1;
   ctx.fillStyle = 'rgba(50,130,255,0.85)';
   for (let i = 0; i < N; i++) {
     if (s.precip[i] <= 0) continue;
-    if (rainMaxIdx < 0 || s.precip[i] > s.precip[rainMaxIdx]) rainMaxIdx = i;
     const bh = Math.max(2, (s.precip[i] / maxP) * barArea);
     ctx.fillRect(x(i) - step * 0.18, pb - bh, step * 0.36, bh);
   }
-  if (rainMaxIdx >= 0 && s.precip[rainMaxIdx] >= 0.1) {
-    ctx.fillStyle = C.blue;
-    ctx.font = '700 11px "Barlow Condensed", sans-serif';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(s.precip[rainMaxIdx].toFixed(1),
-      Math.min(Math.max(x(rainMaxIdx), 12), w - 12),
-      pb - (s.precip[rainMaxIdx] / maxP) * barArea - 2);
+  ctx.fillStyle = C.blue;
+  ctx.font = '700 10px "Barlow Condensed", sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  for (let i = 0; i < N; i++) {
+    // nur lokale Maxima ab 0.2 mm beschriften → bleibt übersichtlich
+    if (s.precip[i] < 0.2) continue;
+    if (s.precip[i] < (s.precip[i - 1] || 0) || s.precip[i] < (s.precip[i + 1] || 0)) continue;
+    ctx.fillText(s.precip[i].toFixed(1).replace('.0', ''),
+      Math.min(Math.max(x(i), 12), w - 12), pb - (s.precip[i] / maxP) * barArea - 2);
   }
 
   // Temperaturlinie über den Balken
   const t24 = s.temp.slice(0, N);
   const tMin = Math.min(...t24), tMax = Math.max(...t24);
-  const pad = Math.max(1, (tMax - tMin) * 0.15);
+  const pad = Math.max(1, (tMax - tMin) * 0.18);
   const ty = (v) => {
-    const y0 = top + 12, y1 = pb - barArea * 0.5;
+    const y0 = top + 14, y1 = pb - barArea * 0.45;
     return y1 - ((v - (tMin - pad)) / ((tMax + pad) - (tMin - pad))) * (y1 - y0);
   };
   ctx.beginPath();
   t24.forEach((v, i) => { i === 0 ? ctx.moveTo(x(i), ty(v)) : ctx.lineTo(x(i), ty(v)); });
-  ctx.strokeStyle = C.yellow;
+  ctx.strokeStyle = C.temp;
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.lineWidth = 1;
 
-  // Höchst-/Tiefstwert beschriften
-  const hi = t24.indexOf(tMax), lo = t24.indexOf(tMin);
-  ctx.font = '700 13px "Barlow Condensed", sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillStyle = C.yellow;
-  ctx.textBaseline = 'bottom';
-  ctx.fillText(Math.round(tMax) + '°', Math.min(Math.max(x(hi), 14), w - 14), ty(tMax) - 3);
-  ctx.fillStyle = C.mid;
-  ctx.textBaseline = 'top';
-  ctx.fillText(Math.round(tMin) + '°', Math.min(Math.max(x(lo), 14), w - 14), ty(tMin) + 3);
+  // Temperaturwerte alle 3 h beschriften (übersichtlich)
+  ctx.font = '700 11px "Barlow Condensed", sans-serif';
+  ctx.fillStyle = C.temp;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  for (let i = 0; i < N; i++) {
+    if (+s.time[i].slice(11, 13) % 3 !== 0) continue;
+    ctx.fillText(Math.round(t24[i]) + '°', Math.min(Math.max(x(i), 12), w - 12), ty(t24[i]) - 4);
+  }
+
+  // ── Wind-Streifen: Mittelwind (grün) + Böen (orange gestrichelt) ──
+  const wind = s.wind.slice(0, N), gust = s.gust.slice(0, N), dir = s.dir.slice(0, N);
+  const wMax = Math.max(30, ...gust) * 1.1;
+  const wbase = h - axisH - 2;             // Basislinie (0 km/h)
+  const wy = (v) => wbase - (v / wMax) * (windH - 14);
+
+  // Böen gestrichelt
+  ctx.beginPath();
+  gust.forEach((v, i) => { i === 0 ? ctx.moveTo(x(i), wy(v)) : ctx.lineTo(x(i), wy(v)); });
+  ctx.strokeStyle = 'rgba(255,140,66,0.85)';
+  ctx.lineWidth = 1.4; ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]);
+  // Mittelwind durchgezogen mit Füllung
+  ctx.beginPath();
+  wind.forEach((v, i) => { i === 0 ? ctx.moveTo(x(i), wy(v)) : ctx.lineTo(x(i), wy(v)); });
+  ctx.lineTo(x(N - 1), wbase); ctx.lineTo(x(0), wbase); ctx.closePath();
+  ctx.fillStyle = 'rgba(57,232,176,0.10)'; ctx.fill();
+  ctx.beginPath();
+  wind.forEach((v, i) => { i === 0 ? ctx.moveTo(x(i), wy(v)) : ctx.lineTo(x(i), wy(v)); });
+  ctx.strokeStyle = 'rgba(57,232,176,0.95)'; ctx.lineWidth = 1.6; ctx.stroke();
+  ctx.lineWidth = 1;
+
+  // Windrichtungs-Pfeile alle 3 h (Pfeil zeigt, wohin der Wind weht)
+  ctx.fillStyle = C.mid; ctx.strokeStyle = C.mid; ctx.lineWidth = 1.1;
+  for (let i = 0; i < N; i += 3) {
+    const a = (dir[i] + 180) * Math.PI / 180;
+    ctx.save();
+    ctx.translate(x(i), windTop + 9);
+    ctx.rotate(a);
+    ctx.beginPath(); ctx.moveTo(0, 4); ctx.lineTo(0, -3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(-2.5, -1.5); ctx.lineTo(2.5, -1.5);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.lineWidth = 1;
+  // Spitzenbö beschriften
+  const gi = gust.indexOf(Math.max(...gust));
+  ctx.fillStyle = 'rgba(255,140,66,0.95)';
+  ctx.font = '700 10px "Barlow Condensed", sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  ctx.fillText(Math.round(gust[gi]), Math.min(Math.max(x(gi), 12), w - 12), wy(gust[gi]) - 2);
 
   // Legende
-  ctx.font = '10px "Share Tech Mono", monospace';
+  ctx.font = '9px "Share Tech Mono", monospace';
   ctx.textAlign = 'left'; ctx.textBaseline = 'top';
   let lx = PAD_L + 2;
-  for (const [t, c] of [['NÄCHSTE 24H', C.mid], ['TEMP', C.yellow],
-                        ['SONNE', 'rgba(255,165,0,0.9)'], ['REGEN mm', C.blue]]) {
+  for (const [t, c] of [['NÄCHSTE 24H', C.mid], ['TEMP', C.temp],
+                        ['SONNE', 'rgba(255,165,0,0.9)'], ['REGEN', C.blue],
+                        ['WIND', C.accent], ['BÖEN', C.orange]]) {
     ctx.fillStyle = c;
     ctx.fillText(t, lx, 3);
-    lx += ctx.measureText(t).width + 9;
+    lx += ctx.measureText(t).width + 7;
   }
 }
 
