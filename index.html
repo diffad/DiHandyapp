@@ -18,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<link rel="stylesheet" href="style.css?v=1.0.013">
+<link rel="stylesheet" href="style.css?v=1.0.014">
 </head>
 <body>
 
@@ -51,9 +51,11 @@
         </div>
       </div>
       <div class="cur-details">
-        <div class="cur-item"><span class="k">GEFÜHLT</span><span class="v" id="curFeels">–°</span></div>
+        <div class="cur-item"><span class="k">GEFÜHLT</span><span class="v" id="curFeels">–°C</span></div>
         <div class="cur-item"><span class="k">WIND</span><span class="v" id="curWind">–</span></div>
         <div class="cur-item"><span class="k">FEUCHTE</span><span class="v" id="curHum">–%</span></div>
+        <div class="cur-item"><span class="k">BEWÖLKUNG</span><span class="v" id="curCloud">–%</span></div>
+        <div class="cur-item"><span class="k">LUFTDRUCK</span><span class="v" id="curPress">–</span></div>
       </div>
     </div>
   </section>
@@ -64,14 +66,15 @@
     <div class="today">
       <div class="cur-details">
         <div class="cur-item"><span class="k">WETTER</span><span class="v" id="tWeather">–</span></div>
-        <div class="cur-item"><span class="k">HÖCHST</span><span class="v t-hi" id="tMax">–°</span></div>
-        <div class="cur-item"><span class="k">TIEF</span><span class="v t-lo" id="tMin">–°</span></div>
+        <div class="cur-item"><span class="k">HÖCHST</span><span class="v t-hi" id="tMax">–°C</span></div>
+        <div class="cur-item"><span class="k">TIEF</span><span class="v t-lo" id="tMin">–°C</span></div>
         <div class="cur-item"><span class="k">REGEN</span><span class="v" id="tRain">–</span></div>
+        <div class="cur-item"><span class="k">REGEN STD</span><span class="v" id="tRainH">–</span></div>
         <div class="cur-item"><span class="k">SONNE</span><span class="v" id="tSun">–</span></div>
-        <div class="cur-item"><span class="k">WIND BÖEN</span><span class="v" id="tGust">–</span></div>
+        <div class="cur-item"><span class="k">WIND MAX</span><span class="v" id="tWind">–</span></div>
+        <div class="cur-item"><span class="k">BÖEN MAX</span><span class="v" id="tGust">–</span></div>
         <div class="cur-item"><span class="k">UV MAX</span><span class="v" id="tUV">–</span></div>
-        <div class="cur-item"><span class="k">🌅 AUF</span><span class="v" id="tSunrise">–:–</span></div>
-        <div class="cur-item"><span class="k">🌇 UNTER</span><span class="v" id="tSunset">–:–</span></div>
+        <div class="cur-item"><span class="k">🌅 / 🌇</span><span class="v" id="tSun2">–:– – –:–</span></div>
       </div>
     </div>
   </section>
@@ -145,6 +148,6 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="app.js?v=1.0.013"></script>
+<script src="app.js?v=1.0.014"></script>
 </body>
 </html>

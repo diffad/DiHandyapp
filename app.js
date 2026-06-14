@@ -4,7 +4,7 @@
    ============================================================ */
 'use strict';
 
-const APP_VERSION = '1.0.013';
+const APP_VERSION = '1.0.014';
 
 // Fallback-Standort: Westbevern / Telgte
 const FALLBACK = { lat: 51.982, lon: 7.776, name: 'Westbevern' };
@@ -87,9 +87,9 @@ async function fetchWeather() {
   const u = new URL('https://api.open-meteo.com/v1/forecast');
   u.search = new URLSearchParams({
     latitude: loc.lat, longitude: loc.lon,
-    current: 'temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,wind_direction_10m,weather_code,precipitation',
+    current: 'temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,wind_direction_10m,weather_code,precipitation,cloud_cover,surface_pressure',
     hourly: 'temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation,direct_radiation',
-    daily: 'sunrise,sunset,weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunshine_duration,wind_gusts_10m_max,uv_index_max',
+    daily: 'sunrise,sunset,weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,precipitation_hours,sunshine_duration,wind_speed_10m_max,wind_gusts_10m_max,uv_index_max',
     timezone: 'auto', forecast_days: 8, wind_speed_unit: 'kmh',
   });
   const r = await fetch(u);
@@ -118,12 +118,14 @@ const hhmm = (iso) => iso.slice(11, 16);
 function renderCurrent(d) {
   const c = d.current;
   const [emoji, desc] = wmo(c.weather_code);
-  $('curTemp').textContent = Math.round(c.temperature_2m) + '°';
+  $('curTemp').textContent = Math.round(c.temperature_2m) + '°C';
   $('curEmoji').textContent = emoji;
   $('curDesc').textContent = desc;
-  $('curFeels').textContent = Math.round(c.apparent_temperature) + '°';
+  $('curFeels').textContent = Math.round(c.apparent_temperature) + '°C';
   $('curWind').textContent = `${Math.round(c.wind_speed_10m)} km/h ${compass(c.wind_direction_10m)}`;
   $('curHum').textContent = Math.round(c.relative_humidity_2m) + '%';
+  $('curCloud').textContent = Math.round(c.cloud_cover) + '%';
+  $('curPress').textContent = Math.round(c.surface_pressure) + ' hPa';
 }
 
 // Tageswerte für "Heute" (erster Tag der daily-Daten)
@@ -131,18 +133,20 @@ function renderToday(d) {
   const dl = d.daily;
   const [emoji, desc] = wmo(dl.weather_code[0]);
   $('tWeather').textContent = `${emoji} ${desc}`;
-  $('tMax').textContent = Math.round(dl.temperature_2m_max[0]) + '°';
-  $('tMin').textContent = Math.round(dl.temperature_2m_min[0]) + '°';
+  $('tMax').textContent = Math.round(dl.temperature_2m_max[0]) + '°C';
+  $('tMin').textContent = Math.round(dl.temperature_2m_min[0]) + '°C';
   const rain = dl.precipitation_sum[0] ?? 0;
   const prob = dl.precipitation_probability_max?.[0];
   $('tRain').textContent = rain.toFixed(1).replace(/\.0$/, '') + ' mm'
     + (prob != null ? ` (${prob}%)` : '');
+  const ph = dl.precipitation_hours?.[0];
+  $('tRainH').textContent = ph != null ? Math.round(ph) + ' h' : '–';
   const sunH = dl.sunshine_duration != null ? dl.sunshine_duration[0] / 3600 : null;
   $('tSun').textContent = sunH == null ? '–' : sunH.toFixed(1) + ' h';
+  $('tWind').textContent = Math.round(dl.wind_speed_10m_max[0]) + ' km/h';
   $('tGust').textContent = Math.round(dl.wind_gusts_10m_max[0]) + ' km/h';
   $('tUV').textContent = dl.uv_index_max?.[0] != null ? dl.uv_index_max[0].toFixed(1) : '–';
-  $('tSunrise').textContent = hhmm(dl.sunrise[0]);
-  $('tSunset').textContent = hhmm(dl.sunset[0]);
+  $('tSun2').textContent = `${hhmm(dl.sunrise[0])} – ${hhmm(dl.sunset[0])}`;
 }
 
 /* ── Luftqualität ─────────────────────────────────────────── */
@@ -525,6 +529,9 @@ function initMap() {
   map.createPane('labelsPane');
   map.getPane('labelsPane').style.zIndex = 320;
   map.getPane('labelsPane').style.pointerEvents = 'none';
+  // Beschriftung + Grenzen kräftiger zeichnen, damit sie über dem Regen
+  // gut sichtbar sind
+  map.getPane('labelsPane').style.filter = 'brightness(1.8) contrast(1.25)';
 
   // Basiskarte ohne Beschriftung (dunkel)
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
