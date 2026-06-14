@@ -18,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<link rel="stylesheet" href="style.css?v=1.0.014">
+<link rel="stylesheet" href="style.css?v=1.0.015">
 </head>
 <body>
 
@@ -136,6 +136,12 @@
     </div>
   </section>
 
+  <!-- Pollenflug (nur sichtbar, wenn Pollen unterwegs) -->
+  <section class="panel" id="pollenPanel" hidden>
+    <div class="panel-head">POLLENFLUG</div>
+    <div class="air" id="pollenList"></div>
+  </section>
+
   <footer>
     <span>DiHandyApp <span id="appVersion"></span></span>
     <span class="sep">·</span>
@@ -148,6 +154,6 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="app.js?v=1.0.014"></script>
+<script src="app.js?v=1.0.015"></script>
 </body>
 </html>

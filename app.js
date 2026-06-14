@@ -4,7 +4,7 @@
    ============================================================ */
 'use strict';
 
-const APP_VERSION = '1.0.014';
+const APP_VERSION = '1.0.015';
 
 // Fallback-Standort: Westbevern / Telgte
 const FALLBACK = { lat: 51.982, lon: 7.776, name: 'Westbevern' };
@@ -101,7 +101,7 @@ async function fetchAir() {
   const u = new URL('https://air-quality-api.open-meteo.com/v1/air-quality');
   u.search = new URLSearchParams({
     latitude: loc.lat, longitude: loc.lon,
-    current: 'pm2_5,pm10,european_aqi,uv_index',
+    current: 'pm2_5,pm10,european_aqi,uv_index,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,ragweed_pollen',
     timezone: 'auto',
   });
   const r = await fetch(u);
@@ -176,6 +176,35 @@ function renderAir(d) {
     [45, 90, 150], ['gut', 'erhöht', 'hoch', 'sehr hoch']);         // WHO: ≤45 µg/m³
   airRow('uv', c.uv_index, c.uv_index.toFixed(1),
     [2.9, 5.9, 7.9], ['niedrig', 'mittel', 'hoch', 'sehr hoch']);
+}
+
+// Pollenflug: nur Arten anzeigen, die aktuell unterwegs sind (Konzentration > 0)
+const POLLEN = [
+  ['grass_pollen', 'Gräser', [5, 20, 50]],
+  ['birch_pollen', 'Birke', [10, 50, 100]],
+  ['alder_pollen', 'Erle', [10, 50, 100]],
+  ['mugwort_pollen', 'Beifuß', [5, 15, 50]],
+  ['ragweed_pollen', 'Ambrosia', [5, 15, 50]],
+];
+
+function renderPollen(c) {
+  const list = $('pollenList');
+  list.innerHTML = '';
+  let any = false;
+  for (const [key, name, thr] of POLLEN) {
+    const v = c[key];
+    if (v == null || v < 0.5) continue;     // nicht in Saison / kein Flug
+    any = true;
+    const [cls, label] = rate(v, thr, ['gering', 'mäßig', 'hoch', 'sehr hoch']);
+    const row = document.createElement('div');
+    row.className = 'air-row';
+    row.innerHTML = `<span class="dot ${cls}"></span>`
+      + `<div class="air-name"><span class="k">${name}</span><span class="lim">Pollen/m³</span></div>`
+      + `<span class="v"><b>${Math.round(v)}</b></span>`
+      + `<span class="rate">${label}</span>`;
+    list.appendChild(row);
+  }
+  $('pollenPanel').hidden = !any;
 }
 
 /* ── Wettergraph: 4 Teilgraphen + Achse ───────────────────── */
@@ -538,10 +567,16 @@ function initMap() {
     attribution: '&copy; OSM &copy; CARTO &copy; RainViewer &copy; DWD',
     subdomains: 'abcd', maxZoom: 10,
   }).addTo(map);
-  // Beschriftung + Grenzen als Overlay über dem Radar (besserer Kontrast)
+  // Beschriftung als Overlay über dem Radar (besserer Kontrast)
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
     subdomains: 'abcd', maxZoom: 10, pane: 'labelsPane',
   }).addTo(map);
+
+  // Kräftige Bundesland-/Landesgrenzen als Vektor-Ebene über dem Radar
+  map.createPane('bordersPane');
+  map.getPane('bordersPane').style.zIndex = 330;
+  map.getPane('bordersPane').style.pointerEvents = 'none';
+  loadBorders();
   locMarker = L.circleMarker([loc.lat, loc.lon], {
     radius: 6, color: C.accent, weight: 2, fillColor: C.accent, fillOpacity: 0.5,
   }).addTo(map);
@@ -571,6 +606,23 @@ function initMap() {
     clearTimeout(moveTimer);
     moveTimer = setTimeout(loadWindArrows, 600);
   });
+}
+
+// Bundesland-/Landesgrenzen als GeoJSON-Vektorlinien (scharf, gut sichtbar)
+const BORDERS_URL = 'https://cdn.jsdelivr.net/gh/isellsoap/deutschlandGeoJSON@main/2_bundeslaender/3_mittel.geo.json';
+
+async function loadBorders() {
+  try {
+    const r = await fetch(BORDERS_URL);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const geo = await r.json();
+    L.geoJSON(geo, {
+      interactive: false, pane: 'bordersPane',
+      style: { color: '#dbe6f5', weight: 1.2, opacity: 0.75, fill: false },
+    }).addTo(map);
+  } catch (e) {
+    console.error('Grenzen:', e);
+  }
 }
 
 // Windpfeile: Höhenwind (850 hPa ≈ 1,5 km) an einem 4×4-Raster über dem
@@ -726,7 +778,9 @@ async function updateWeather() {
 
 async function updateAir() {
   try {
-    renderAir(await fetchAir());
+    const a = await fetchAir();
+    renderAir(a);
+    renderPollen(a.current);
     setDot('dotAir', 'ok');
   } catch (e) {
     console.error('Luft:', e);
