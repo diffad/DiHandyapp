@@ -4,7 +4,7 @@
    ============================================================ */
 'use strict';
 
-const APP_VERSION = '1.0.012';
+const APP_VERSION = '1.0.013';
 
 // Fallback-Standort: Westbevern / Telgte
 const FALLBACK = { lat: 51.982, lon: 7.776, name: 'Westbevern' };
@@ -89,7 +89,7 @@ async function fetchWeather() {
     latitude: loc.lat, longitude: loc.lon,
     current: 'temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,wind_direction_10m,weather_code,precipitation',
     hourly: 'temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation,direct_radiation',
-    daily: 'sunrise,sunset,weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,sunshine_duration,wind_gusts_10m_max',
+    daily: 'sunrise,sunset,weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunshine_duration,wind_gusts_10m_max,uv_index_max',
     timezone: 'auto', forecast_days: 8, wind_speed_unit: 'kmh',
   });
   const r = await fetch(u);
@@ -124,8 +124,25 @@ function renderCurrent(d) {
   $('curFeels').textContent = Math.round(c.apparent_temperature) + '°';
   $('curWind').textContent = `${Math.round(c.wind_speed_10m)} km/h ${compass(c.wind_direction_10m)}`;
   $('curHum').textContent = Math.round(c.relative_humidity_2m) + '%';
-  $('curSunrise').textContent = hhmm(d.daily.sunrise[0]);
-  $('curSunset').textContent = hhmm(d.daily.sunset[0]);
+}
+
+// Tageswerte für "Heute" (erster Tag der daily-Daten)
+function renderToday(d) {
+  const dl = d.daily;
+  const [emoji, desc] = wmo(dl.weather_code[0]);
+  $('tWeather').textContent = `${emoji} ${desc}`;
+  $('tMax').textContent = Math.round(dl.temperature_2m_max[0]) + '°';
+  $('tMin').textContent = Math.round(dl.temperature_2m_min[0]) + '°';
+  const rain = dl.precipitation_sum[0] ?? 0;
+  const prob = dl.precipitation_probability_max?.[0];
+  $('tRain').textContent = rain.toFixed(1).replace(/\.0$/, '') + ' mm'
+    + (prob != null ? ` (${prob}%)` : '');
+  const sunH = dl.sunshine_duration != null ? dl.sunshine_duration[0] / 3600 : null;
+  $('tSun').textContent = sunH == null ? '–' : sunH.toFixed(1) + ' h';
+  $('tGust').textContent = Math.round(dl.wind_gusts_10m_max[0]) + ' km/h';
+  $('tUV').textContent = dl.uv_index_max?.[0] != null ? dl.uv_index_max[0].toFixed(1) : '–';
+  $('tSunrise').textContent = hhmm(dl.sunrise[0]);
+  $('tSunset').textContent = hhmm(dl.sunset[0]);
 }
 
 /* ── Luftqualität ─────────────────────────────────────────── */
@@ -498,10 +515,25 @@ function initMap() {
   map = L.map('map', {
     zoomControl: true, attributionControl: true, maxZoom: 10, minZoom: 5,
     dragging: !L.Browser.touch, touchZoom: true, tap: false,
-  }).setView([loc.lat, loc.lon], 7);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  }).setView([loc.lat, loc.lon], 8);
+
+  // Eigene Ebenen: Radar liegt über der Basiskarte, Ortsnamen/Grenzen
+  // wiederum über dem Radar – so bleiben sie trotz Regenfläche lesbar
+  map.createPane('radarPane');
+  map.getPane('radarPane').style.zIndex = 300;
+  map.getPane('radarPane').style.pointerEvents = 'none';
+  map.createPane('labelsPane');
+  map.getPane('labelsPane').style.zIndex = 320;
+  map.getPane('labelsPane').style.pointerEvents = 'none';
+
+  // Basiskarte ohne Beschriftung (dunkel)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; OSM &copy; CARTO &copy; RainViewer &copy; DWD',
     subdomains: 'abcd', maxZoom: 10,
+  }).addTo(map);
+  // Beschriftung + Grenzen als Overlay über dem Radar (besserer Kontrast)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd', maxZoom: 10, pane: 'labelsPane',
   }).addTo(map);
   locMarker = L.circleMarker([loc.lat, loc.lon], {
     radius: 6, color: C.accent, weight: 2, fillColor: C.accent, fillOpacity: 0.5,
@@ -520,7 +552,7 @@ function initMap() {
       a.setAttribute('aria-label', 'Ansicht zurücksetzen');
       L.DomEvent.on(a, 'click', (e) => {
         L.DomEvent.stop(e);
-        map.setView([loc.lat, loc.lon], 7);
+        map.setView([loc.lat, loc.lon], 8);
       });
       return div;
     },
@@ -593,7 +625,7 @@ async function loadRadar() {
     const past = (j.radar?.past || []).slice(-7).map((f) => ({
       time: f.time,
       layer: L.tileLayer(`${j.host}${f.path}/256/{z}/{x}/{y}/6/1_1.png`, {
-        opacity: 0, maxZoom: 10, maxNativeZoom: 7,
+        opacity: 0, maxZoom: 10, maxNativeZoom: 7, pane: 'radarPane',
       }),
     }));
 
@@ -608,7 +640,7 @@ async function loadRadar() {
         time: Math.round(t / 1000),
         layer: L.tileLayer.wms(DWD_WMS, {
           layers: DWD_LAYER, format: 'image/png', transparent: true,
-          version: '1.3.0', opacity: 0, maxZoom: 10,
+          version: '1.3.0', opacity: 0, maxZoom: 10, pane: 'radarPane',
           time: new Date(t).toISOString().replace(/\.\d{3}Z$/, '.000Z'),
         }),
       });
@@ -643,10 +675,10 @@ function showRadarFrame(i) {
   radarLayers.forEach((l, k) => l.setOpacity(k === i ? 0.75 : 0));
   const f = radarFrames[i];
   const future = f.time * 1000 > Date.now();
-  // Zukunfts-Frames (RainViewer-Vorhersage) als "+XX min" kennzeichnen
-  $('radarTime').textContent = future
-    ? `+${Math.round((f.time * 1000 - Date.now()) / 60000 / 5) * 5} min`
-    : new Date(f.time * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const clock = new Date(f.time * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  // Vorhersage-Frames: relative Pluszeit zusammen mit der Uhrzeit anzeigen
+  const mins = Math.round((f.time * 1000 - Date.now()) / 60000 / 5) * 5;
+  $('radarTime').textContent = future ? `+${mins} min · ${clock}` : clock;
   $('radarTime').classList.toggle('future', future);
   $('radarSlider').value = i;
 }
@@ -675,6 +707,7 @@ async function updateWeather() {
   try {
     weatherData = await fetchWeather();
     renderCurrent(weatherData);
+    renderToday(weatherData);
     drawGraphs();
     setDot('dotWeather', 'ok');
     $('updatedAt').textContent = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
@@ -694,6 +727,44 @@ async function updateAir() {
   }
 }
 
+/* ── DWD-Wetterwarnungen (via Bright Sky, CORS-freundlich) ─── */
+
+const WARN_SEV = { Minor: 'warn', Moderate: 'bad', Severe: 'err', Extreme: 'err' };
+
+async function fetchWarnings() {
+  const u = `https://api.brightsky.dev/alerts?lat=${loc.lat}&lon=${loc.lon}&tz=Europe/Berlin`;
+  const r = await fetch(u);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return (await r.json()).alerts || [];
+}
+
+function renderWarnings(alerts) {
+  const panel = $('warnPanel'), list = $('warnList');
+  list.innerHTML = '';
+  if (!alerts.length) { panel.hidden = true; return; }
+  for (const a of alerts.slice(0, 6)) {
+    const div = document.createElement('div');
+    div.className = 'warn-item ' + (WARN_SEV[a.severity] || 'warn');
+    const ev = a.event_de || a.headline_de || a.event_en || 'Wetterwarnung';
+    const until = a.expires
+      ? new Date(a.expires).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+      : '';
+    div.innerHTML = `<div class="warn-ev">${ev}</div>`
+      + (until ? `<div class="warn-time">gültig bis ${until} Uhr</div>` : '');
+    list.appendChild(div);
+  }
+  panel.hidden = false;
+}
+
+async function updateWarnings() {
+  try {
+    renderWarnings(await fetchWarnings());
+  } catch (e) {
+    console.error('Warnungen:', e);
+    $('warnPanel').hidden = true;
+  }
+}
+
 let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
@@ -702,7 +773,7 @@ window.addEventListener('resize', () => {
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
-    updateWeather(); updateAir(); loadRadar();
+    updateWeather(); updateAir(); updateWarnings(); loadRadar();
   }
 });
 
@@ -714,11 +785,13 @@ async function main() {
   initMap();
   updateWeather();
   updateAir();
+  updateWarnings();
   loadRadar();
   loadWindArrows();
   setRadarPlaying(false);   // Standbild (aktuellste Aufnahme); ▶ startet die Animation
   setInterval(updateWeather, REFRESH_WEATHER);
   setInterval(updateAir, REFRESH_WEATHER);
+  setInterval(updateWarnings, REFRESH_WEATHER);
   setInterval(loadRadar, REFRESH_RADAR);
   setInterval(loadWindArrows, REFRESH_WEATHER);
 }
