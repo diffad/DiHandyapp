@@ -93,6 +93,7 @@ main {
   padding: 8px 12px 6px;
 }
 .panel-head .hint { color: var(--border); letter-spacing: 0; font-size: 9px; }
+.panel-head .sub { color: var(--mid); letter-spacing: 0; text-transform: none; font-size: 10px; }
 
 /* ── DWD-Warnungen ────────────────────────── */
 #warnPanel .panel-head { color: var(--orange); }

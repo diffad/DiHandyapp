@@ -4,7 +4,7 @@
    ============================================================ */
 'use strict';
 
-const APP_VERSION = '1.0.015';
+const APP_VERSION = '1.0.016';
 
 // Fallback-Standort: Westbevern / Telgte
 const FALLBACK = { lat: 51.982, lon: 7.776, name: 'Westbevern' };
@@ -190,21 +190,24 @@ const POLLEN = [
 function renderPollen(c) {
   const list = $('pollenList');
   list.innerHTML = '';
-  let any = false;
+  const active = [];
   for (const [key, name, thr] of POLLEN) {
     const v = c[key];
     if (v == null || v < 0.5) continue;     // nicht in Saison / kein Flug
-    any = true;
     const [cls, label] = rate(v, thr, ['gering', 'mäßig', 'hoch', 'sehr hoch']);
+    active.push(name);
+    const scale = `mäßig ab ${thr[0]} · hoch ab ${thr[1]} · sehr hoch ab ${thr[2]} /m³`;
     const row = document.createElement('div');
     row.className = 'air-row';
     row.innerHTML = `<span class="dot ${cls}"></span>`
-      + `<div class="air-name"><span class="k">${name}</span><span class="lim">Pollen/m³</span></div>`
-      + `<span class="v"><b>${Math.round(v)}</b></span>`
+      + `<div class="air-name"><span class="k">${name}</span><span class="lim">${scale}</span></div>`
+      + `<span class="v"><b>${Math.round(v)}</b> /m³</span>`
       + `<span class="rate">${label}</span>`;
     list.appendChild(row);
   }
-  $('pollenPanel').hidden = !any;
+  // Welche Pollen aktuell unterwegs sind, in der Überschrift anzeigen
+  $('pollenActive').textContent = active.length ? '· ' + active.join(', ') : '';
+  $('pollenPanel').hidden = !active.length;
 }
 
 /* ── Wettergraph: 4 Teilgraphen + Achse ───────────────────── */
